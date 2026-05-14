@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -164,6 +165,8 @@ export default function POSPage() {
   
   // Mobile cart state
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  /** Portals must mount on the client so #print-receipt is a direct child of document.body for print CSS. */
+  const [printPortalReady, setPrintPortalReady] = useState(false);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
@@ -171,6 +174,10 @@ export default function POSPage() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    setPrintPortalReady(true);
   }, []);
 
   useEffect(() => {
@@ -971,80 +978,83 @@ export default function POSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Print-only Receipt - Hidden on screen, visible only when printing */}
-      {orderSuccess && (
-        <div id="print-receipt" className="hidden print:block bg-white">
-          <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '11px', color: 'black' }}>
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-              <div style={{ fontSize: '16px', fontWeight: 'bold' }}>RestoOS</div>
-              <div style={{ fontSize: '9px' }}>123 Culinary Drive, Food City</div>
-              <div style={{ fontSize: '9px' }}>Tel: +92 300 1234567</div>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '4px' }}>
-              <span>Date: {orderSuccess?.timestamp?.toLocaleDateString()}</span>
-              <span>Time: {orderSuccess?.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-              <span>Cashier: {orderSuccess?.cashier}</span>
-              <span>{orderSuccess?.orderType?.replace('_', ' ')}</span>
-            </div>
-
-            <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '9px', marginBottom: '6px' }}>
-                <span>ITEM</span>
-                <span>AMT</span>
+      {/* Print-only receipt: portaled to body so @media print can hide all other body children without layout from the dashboard (fixes blank first page). */}
+      {printPortalReady &&
+        orderSuccess &&
+        createPortal(
+          <div id="print-receipt" className="hidden print:block bg-white" aria-hidden>
+            <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '13px', color: 'black' }}>
+              <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>RestoOS</div>
+                <div style={{ fontSize: '9px' }}>123 Culinary Drive, Food City</div>
+                <div style={{ fontSize: '9px' }}>Tel: +92 300 1234567</div>
               </div>
-              {orderSuccess?.cart?.map((c: any, i: number) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <div style={{ flex: 1, paddingRight: '8px' }}>
-                    <div style={{ fontWeight: 'bold' }}>{c.quantity}x {c.item.name}</div>
-                    {c.variantName && <div style={{ fontSize: '9px', marginLeft: '10px' }}>- {c.variantName}</div>}
-                    {c.addonNames?.map((a: string) => <div key={a} style={{ fontSize: '9px', marginLeft: '10px' }}>+ {a}</div>)}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '4px' }}>
+                <span>Date: {orderSuccess?.timestamp?.toLocaleDateString()}</span>
+                <span>Time: {orderSuccess?.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+                <span>Cashier: {orderSuccess?.cashier}</span>
+                <span>{orderSuccess?.orderType?.replace('_', ' ')}</span>
+              </div>
+
+              <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '9px', marginBottom: '6px' }}>
+                  <span>ITEM</span>
+                  <span>AMT</span>
+                </div>
+                {orderSuccess?.cart?.map((c: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div style={{ flex: 1, paddingRight: '8px' }}>
+                      <div style={{ fontWeight: 'bold' }}>{c.quantity}x {c.item.name}</div>
+                      {c.variantName && <div style={{ fontSize: '9px', marginLeft: '10px' }}>- {c.variantName}</div>}
+                      {c.addonNames?.map((a: string) => <div key={a} style={{ fontSize: '9px', marginLeft: '10px' }}>+ {a}</div>)}
+                    </div>
+                    <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>Rs.{(c.totalPrice * c.quantity)}</span>
                   </div>
-                  <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>Rs.{(c.totalPrice * c.quantity)}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                <span>Subtotal</span>
-                <span>Rs.{orderSuccess?.subtotal}</span>
+                ))}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span>Tax (0%)</span>
-                <span>Rs.0</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', borderTop: '1px solid black', paddingTop: '6px', marginTop: '4px' }}>
-                <span>TOTAL</span>
-                <span>Rs.{orderSuccess?.subtotal}</span>
-              </div>
-            </div>
 
-            <div style={{ marginBottom: '8px' }}>
-              {orderSuccess?.payments?.map((p: any, i: number) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{p.method}</span>
-                  <span>Rs.{p.amount}</span>
+              <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span>Subtotal</span>
+                  <span>Rs.{orderSuccess?.subtotal}</span>
                 </div>
-              ))}
-              {(orderSuccess?.payments?.reduce((s:number,p:any)=>s+p.amount,0) || 0) > (orderSuccess?.subtotal || 0) && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px' }}>
-                  <span>CHANGE</span>
-                  <span>Rs.{((orderSuccess?.payments?.reduce((s:number,p:any)=>s+p.amount,0) || 0) - (orderSuccess?.subtotal || 0))}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Tax (0%)</span>
+                  <span>Rs.0</span>
                 </div>
-              )}
-            </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', borderTop: '1px solid black', paddingTop: '6px', marginTop: '4px' }}>
+                  <span>TOTAL</span>
+                  <span>Rs.{orderSuccess?.subtotal}</span>
+                </div>
+              </div>
 
-            <div style={{ textAlign: 'center', borderTop: '1px dashed black', paddingTop: '8px' }}>
-              <div style={{ fontWeight: 'bold', fontSize: '12px' }}>Thank You!</div>
-              <div style={{ fontSize: '9px' }}>Please come again</div>
-              <div style={{ fontSize: '8px', marginTop: '6px' }}>Powered by RestoOS</div>
+              <div style={{ marginBottom: '8px' }}>
+                {orderSuccess?.payments?.map((p: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{p.method}</span>
+                    <span>Rs.{p.amount}</span>
+                  </div>
+                ))}
+                {(orderSuccess?.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0) > (orderSuccess?.subtotal || 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px' }}>
+                    <span>CHANGE</span>
+                    <span>Rs.{(orderSuccess?.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0) - (orderSuccess?.subtotal || 0)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ textAlign: 'center', borderTop: '1px dashed black', paddingTop: '8px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '12px' }}>Thank You!</div>
+                <div style={{ fontSize: '9px' }}>Please come again</div>
+                <div style={{ fontSize: '8px', marginTop: '6px' }}>Powered by RestoOS</div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

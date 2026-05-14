@@ -349,52 +349,55 @@
 
 @layer utilities {
   @media print {
+    /* Let PDF / desktop printers use the full printable area; thermal rolls still look fine when width is capped below */
     @page {
-      size: 72mm auto;
-      margin: 0;
+      size: auto;
+      margin: 8mm;
     }
 
-    * {
-      margin: 0 !important;
-      padding: 0 !important;
+    *,
+    *::before,
+    *::after {
       box-sizing: border-box !important;
     }
 
-    html, body {
+    html,
+    body {
       background: white !important;
       color: black !important;
-      width: 72mm !important;
-      min-width: 72mm !important;
-      max-width: 72mm !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
       height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
       overflow: visible !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
-      font-size: 10px !important;
     }
-    
+
+    /* #print-receipt is portaled to document.body so this hides the app shell without leaving a "ghost" layout (blank first page). */
     body > *:not(#print-receipt) {
       display: none !important;
     }
 
     #print-receipt {
       display: block !important;
-      position: relative !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 72mm !important;
-      min-width: 72mm !important;
-      max-width: 72mm !important;
-      height: auto !important;
-      padding: 3mm !important;
+      position: static !important;
+      left: auto !important;
+      top: auto !important;
+      width: 100% !important;
+      max-width: 80mm;
+      min-height: 0 !important;
+      margin: 0 auto !important;
+      padding: 4mm !important;
       background: white !important;
       font-family: 'Courier New', monospace !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
 
-    #print-receipt * {
-      padding: 0 !important;
-      margin: 0 !important;
-    }
+    /* Do not zero margins on every descendant — it nukes inline spacing in the receipt */
 
     #print-receipt > div {
       width: 100% !important;
@@ -412,7 +415,10 @@
 
     [data-radix-dialog-overlay],
     [data-radix-dialog-content],
-    [role="dialog"] {
+    [role='dialog'],
+    [data-slot='dialog-portal'],
+    [data-slot='dialog-overlay'],
+    [data-slot='dialog-content'] {
       display: none !important;
     }
   }
