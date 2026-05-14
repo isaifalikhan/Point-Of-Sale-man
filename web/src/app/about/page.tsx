@@ -25,10 +25,10 @@ export default function AboutPage() {
   ];
 
   const values = [
-    { icon: Lightbulb, title: 'Simplicity First', desc: 'We believe powerful software doesn't have to be complicated. Every feature we build passes the "busy Friday night" test.' },
-    { icon: Heart, title: 'Customer Obsession', desc: 'Our customers aren't just users — they're partners. We listen, learn, and build what actually helps them succeed.' },
+    { icon: Lightbulb, title: 'Simplicity First', desc: 'We believe powerful software doesn\'t have to be complicated. Every feature we build passes the "busy Friday night" test.' },
+    { icon: Heart, title: 'Customer Obsession', desc: 'Our customers aren\'t just users - they\'re partners. We listen, learn, and build what actually helps them succeed.' },
     { icon: Zap, title: 'Speed Matters', desc: 'In hospitality, every second counts. We optimize relentlessly for performance because your customers are waiting.' },
-    { icon: Target, title: 'Relentless Improvement', desc: 'We ship updates weekly. Good enough never is. There's always a better way, and we're determined to find it.' },
+    { icon: Target, title: 'Relentless Improvement', desc: 'We ship updates weekly. Good enough never is. There\'s always a better way, and we\'re determined to find it.' },
   ];
 
   const milestones = [
