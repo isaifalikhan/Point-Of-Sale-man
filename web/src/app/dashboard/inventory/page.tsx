@@ -26,6 +26,7 @@ export default function InventoryPage() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', stockUnit: 'pieces', currentStock: 0, lowStockAlert: 10 });
+  const [addingItem, setAddingItem] = useState(false);
 
   useEffect(() => {
     fetchInventory();
@@ -81,6 +82,7 @@ export default function InventoryPage() {
   };
 
   const handleAddIngredient = async () => {
+    setAddingItem(true);
     try {
       await apiClient.post('/inventory', newItem);
       fetchInventory();
@@ -88,6 +90,8 @@ export default function InventoryPage() {
       setNewItem({ name: '', stockUnit: 'pieces', currentStock: 0, lowStockAlert: 10 });
     } catch (error) {
       console.error('Failed to create inventory item', error);
+    } finally {
+      setAddingItem(false);
     }
   };
 
@@ -144,7 +148,7 @@ export default function InventoryPage() {
                    <Input type="number" value={newItem.lowStockAlert} onChange={e => setNewItem({...newItem, lowStockAlert: parseFloat(e.target.value)})} />
                  </div>
               </div>
-              <Button onClick={handleAddIngredient} className="w-full bg-indigo-600">Save Item</Button>
+              <Button onClick={handleAddIngredient} className="w-full bg-indigo-600" loading={addingItem}>Save Item</Button>
             </div>
           </DialogContent>
         </Dialog>

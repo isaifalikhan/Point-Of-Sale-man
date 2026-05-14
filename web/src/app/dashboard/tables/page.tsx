@@ -18,6 +18,7 @@ export default function FloorPlanManagement() {
   const [newTable, setNewTable] = useState({ name: '', capacity: 2, branchId: '' });
   const [editingTable, setEditingTable] = useState<any>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [creatingTable, setCreatingTable] = useState(false);
 
   // New Confirmation States
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; tableId: string | null }>({ isOpen: false, tableId: null });
@@ -51,6 +52,7 @@ export default function FloorPlanManagement() {
   };
 
   const handleCreateTable = async () => {
+    setCreatingTable(true);
     try {
       // Place new table in center roughly
       const payload = { ...newTable, x: 200, y: 200 };
@@ -60,6 +62,8 @@ export default function FloorPlanManagement() {
       setNewTable({ name: '', capacity: 2, branchId: branches[0]?.id || '' });
     } catch (error) {
       console.error('Error creating table:', error);
+    } finally {
+      setCreatingTable(false);
     }
   };
 
@@ -261,7 +265,7 @@ export default function FloorPlanManagement() {
                   />
                   <p className="text-xs text-slate-500 italic mt-1">Note: 1-3 seats will render as a circle. 4+ seats will render as a rectangle.</p>
                 </div>
-                <Button onClick={handleCreateTable} className="w-full bg-indigo-600">Drop Table to Canvas</Button>
+                <Button onClick={handleCreateTable} className="w-full bg-indigo-600" loading={creatingTable}>Drop Table to Canvas</Button>
               </div>
             </DialogContent>
           </Dialog>

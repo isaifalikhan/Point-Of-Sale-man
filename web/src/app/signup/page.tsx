@@ -157,8 +157,8 @@ export default function SignupPage() {
           </div>
         </div>
 
-        <Button type="submit" className="h-11 w-full rounded-xl text-[15px]" disabled={loading}>
-          {loading ? 'Creating workspace…' : 'Create workspace'}
+        <Button type="submit" className="h-11 w-full rounded-xl text-[15px]" loading={loading}>
+          Create workspace
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">

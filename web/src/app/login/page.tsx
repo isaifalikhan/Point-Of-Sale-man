@@ -108,8 +108,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Button type="submit" className="h-11 w-full rounded-xl text-[15px]" disabled={loading}>
-          {loading ? 'Signing in…' : 'Continue'}
+        <Button type="submit" className="h-11 w-full rounded-xl text-[15px]" loading={loading}>
+          Continue
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">

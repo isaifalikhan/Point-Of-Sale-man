@@ -608,9 +608,9 @@ export default function POSPage() {
       <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black text-slate-900">Payment Processing</DialogTitle>
+            <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">Payment Processing</DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-6">
+          <div className="py-2 sm:py-4 space-y-4 sm:space-y-6">
              <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
                {['FULL', 'PARTIAL', 'SPLIT'].map(mode => (
                  <Button 
@@ -618,44 +618,44 @@ export default function POSPage() {
                    variant={paymentMode === mode ? 'default' : 'ghost'} 
                    size="sm" 
                    onClick={() => setPaymentMode(mode as any)} 
-                   className={`flex-1 font-bold ${paymentMode === mode ? 'shadow-sm' : 'text-slate-500'}`}
+                   className={`flex-1 font-bold text-xs sm:text-sm ${paymentMode === mode ? 'shadow-sm' : 'text-slate-500'}`}
                  >
                    {mode}
                  </Button>
                ))}
              </div>
 
-             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between items-center">
-                <span className="font-bold text-slate-500">Order Total</span>
-                <span className="text-3xl font-black text-slate-900">Rs. {subtotal.toFixed(0)}</span>
+             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 flex justify-between items-center">
+                <span className="font-bold text-slate-500 text-sm sm:text-base">Order Total</span>
+                <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {subtotal.toFixed(0)}</span>
              </div>
 
              {paymentMode === 'FULL' && (
-               <div className="space-y-4">
+               <div className="space-y-3 sm:space-y-4">
                  <div className="space-y-2">
                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Amount Tendered (Cash)</label>
                    <Input 
                      type="number" 
                      placeholder="Enter amount given by customer..." 
-                     className="h-14 text-xl font-bold"
+                     className="h-12 sm:h-14 text-lg sm:text-xl font-bold"
                      value={amountTendered}
                      onChange={(e) => setAmountTendered(e.target.value)}
                    />
                    {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < subtotal && (
-                     <div className="flex items-center gap-2 text-sm p-3 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-200">
+                     <div className="flex items-center gap-2 text-xs sm:text-sm p-2.5 sm:p-3 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-200">
                         <span className="text-rose-500">⚠</span>
-                        <span>Insufficient amount! Need Rs. {(subtotal - parseFloat(amountTendered)).toFixed(0)} more</span>
+                        <span>Insufficient! Need Rs. {(subtotal - parseFloat(amountTendered)).toFixed(0)} more</span>
                      </div>
                    )}
                    {parseFloat(amountTendered) >= subtotal && (
-                     <div className="flex justify-between items-center text-sm p-3 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100">
+                     <div className="flex justify-between items-center text-xs sm:text-sm p-2.5 sm:p-3 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100">
                         <span>Change Due:</span>
-                        <span className="text-xl">Rs. {(parseFloat(amountTendered) - subtotal).toFixed(0)}</span>
+                        <span className="text-lg sm:text-xl">Rs. {(parseFloat(amountTendered) - subtotal).toFixed(0)}</span>
                      </div>
                    )}
                  </div>
                  <Button 
-                   className="w-full h-14 font-black uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700"
+                   className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 text-sm sm:text-base"
                    disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < subtotal}
                    onClick={() => finalizeOrder([{ amount: subtotal, method: 'CASH' }])}
                  >
@@ -665,21 +665,21 @@ export default function POSPage() {
              )}
 
              {paymentMode === 'SPLIT' && (
-               <div className="space-y-4">
+               <div className="space-y-3 sm:space-y-4">
                   <div className="space-y-2">
                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Split How Many Ways?</label>
-                     <div className="flex items-center gap-3">
-                        <Button variant="outline" size="icon" onClick={() => setSplitCount(Math.max(2, splitCount - 1))}><Minus className="h-4 w-4" /></Button>
-                        <span className="text-xl font-black w-12 text-center">{splitCount}</span>
-                        <Button variant="outline" size="icon" onClick={() => setSplitCount(splitCount + 1)}><Plus className="h-4 w-4" /></Button>
+                     <div className="flex items-center justify-center gap-3 sm:gap-4">
+                        <Button variant="outline" size="icon" className="h-10 w-10 sm:h-11 sm:w-11" onClick={() => setSplitCount(Math.max(2, splitCount - 1))}><Minus className="h-4 w-4" /></Button>
+                        <span className="text-xl sm:text-2xl font-black w-12 text-center">{splitCount}</span>
+                        <Button variant="outline" size="icon" className="h-10 w-10 sm:h-11 sm:w-11" onClick={() => setSplitCount(splitCount + 1)}><Plus className="h-4 w-4" /></Button>
                      </div>
                   </div>
-                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
-                     <span className="font-bold text-indigo-700">Per Person</span>
-                     <span className="text-2xl font-black text-indigo-900">Rs. {(subtotal / splitCount).toFixed(0)}</span>
+                  <div className="p-3 sm:p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
+                     <span className="font-bold text-indigo-700 text-sm sm:text-base">Per Person</span>
+                     <span className="text-xl sm:text-2xl font-black text-indigo-900">Rs. {(subtotal / splitCount).toFixed(0)}</span>
                   </div>
                   <Button 
-                    className="w-full h-14 font-black uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-4"
+                    className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-2 sm:mt-4 text-sm sm:text-base"
                     disabled={processingOrder}
                     onClick={() => {
                       const splitVal = subtotal / splitCount;
@@ -693,20 +693,20 @@ export default function POSPage() {
              )}
 
              {paymentMode === 'PARTIAL' && (
-               <div className="space-y-4">
+               <div className="space-y-3 sm:space-y-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Add Payment</label>
                     <Input 
                       type="number" 
                       placeholder="Enter amount..." 
-                      className="h-12 text-lg font-bold"
+                      className="h-11 sm:h-12 text-base sm:text-lg font-bold"
                       value={amountTendered}
                       onChange={(e) => setAmountTendered(e.target.value)}
                     />
                     <div className="grid grid-cols-2 gap-2 mt-2">
                        <Button 
                          variant="outline" 
-                         className="h-10 font-bold"
+                         className="h-10 font-bold text-xs sm:text-sm"
                          disabled={!amountTendered || isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) <= 0}
                          onClick={() => {
                            if (!amountTendered || isNaN(parseFloat(amountTendered))) return;
@@ -718,11 +718,11 @@ export default function POSPage() {
                        </Button>
                        <Button 
                          variant="outline" 
-                         className="h-10 font-bold"
+                         className="h-10 font-bold text-xs sm:text-sm"
                          disabled={!amountTendered || isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) <= 0}
                          onClick={() => {
                            if (!amountTendered || isNaN(parseFloat(amountTendered))) return;
-                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CARD' }]);
+                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CARD' });
                            setAmountTendered('');
                          }}
                        >
@@ -732,9 +732,9 @@ export default function POSPage() {
                   </div>
 
                   {partialPayments.length > 0 && (
-                    <div className="space-y-2 mt-4">
+                    <div className="space-y-2 mt-2 sm:mt-4 max-h-[25vh] overflow-y-auto">
                       {partialPayments.map((p, idx) => (
-                        <div key={idx} className="flex justify-between items-center p-2 text-sm font-bold border-b">
+                        <div key={idx} className="flex justify-between items-center p-2 text-xs sm:text-sm font-bold border-b">
                            <div className="flex items-center gap-2">
                              <span className="text-slate-500">Payment {idx + 1}</span>
                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.method === 'CASH' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
@@ -754,7 +754,7 @@ export default function POSPage() {
                            </div>
                         </div>
                       ))}
-                      <div className="flex justify-between p-2 text-sm font-black text-rose-600">
+                      <div className="flex justify-between p-2 text-xs sm:text-sm font-black text-rose-600">
                          <span>Remaining Balance</span>
                          <span>Rs. {Math.max(0, subtotal - partialPayments.reduce((s, p) => s + p.amount, 0)).toFixed(0)}</span>
                       </div>
@@ -762,7 +762,7 @@ export default function POSPage() {
                   )}
 
                   <Button 
-                    className="w-full h-14 font-black uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-4"
+                    className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-2 sm:mt-4 text-sm sm:text-base"
                     disabled={processingOrder || partialPayments.reduce((s, p) => s + p.amount, 0) < subtotal}
                     onClick={() => finalizeOrder(partialPayments)}
                   >
@@ -779,22 +779,22 @@ export default function POSPage() {
       <Dialog open={!!selectedItemForModal} onOpenChange={() => setSelectedItemForModal(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black text-slate-900">{selectedItemForModal?.name}</DialogTitle>
+            <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">{selectedItemForModal?.name}</DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-6">
+          <div className="py-2 sm:py-4 space-y-4 sm:space-y-6">
              {selectedItemForModal?.variants && (
-               <div className="space-y-3">
+               <div className="space-y-2 sm:space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Select Size / Option</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                      {selectedItemForModal.variants.map(v => (
                         <Button 
                           key={v.name}
                           variant={selectedVariant === v.name ? 'default' : 'outline'}
-                          className={`h-auto py-3 px-4 flex flex-col items-start gap-1 justify-center rounded-xl transition-all ${selectedVariant === v.name ? 'premium-gradient border-none shadow-md ring-2 ring-indigo-500 ring-offset-2' : 'border-slate-100 hover:border-indigo-200'}`}
+                          className={`h-auto py-2.5 sm:py-3 px-3 sm:px-4 flex flex-col items-start gap-0.5 sm:gap-1 justify-center rounded-xl transition-all ${selectedVariant === v.name ? 'premium-gradient border-none shadow-md ring-2 ring-indigo-500 ring-offset-2' : 'border-slate-100 hover:border-indigo-200'}`}
                           onClick={() => setSelectedVariant(v.name)}
                         >
-                           <span className="font-bold text-sm">{v.name}</span>
-                           <span className={`text-xs ${selectedVariant === v.name ? 'text-white/80' : 'text-slate-500'}`}>Rs. {v.price}</span>
+                           <span className="font-bold text-xs sm:text-sm">{v.name}</span>
+                           <span className={`text-[10px] sm:text-xs ${selectedVariant === v.name ? 'text-white/80' : 'text-slate-500'}`}>Rs. {v.price}</span>
                         </Button>
                      ))}
                   </div>
@@ -802,13 +802,13 @@ export default function POSPage() {
              )}
 
              {selectedItemForModal?.addons && selectedItemForModal.addons.length > 0 && (
-               <div className="space-y-3">
+               <div className="space-y-2 sm:space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customize / Add-ons</label>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 sm:space-y-2 max-h-[30vh] sm:max-h-none overflow-y-auto">
                      {selectedItemForModal.addons.map(a => (
                         <div 
                           key={a.name}
-                          className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${selectedAddons.includes(a.name) ? 'bg-indigo-50 border-indigo-200' : 'border-slate-100 hover:border-slate-200'}`}
+                          className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all active:scale-[0.98] ${selectedAddons.includes(a.name) ? 'bg-indigo-50 border-indigo-200' : 'border-slate-100 hover:border-slate-200'}`}
                           onClick={() => {
                             if (selectedAddons.includes(a.name)) {
                               setSelectedAddons(selectedAddons.filter(id => id !== a.name));
@@ -817,22 +817,22 @@ export default function POSPage() {
                             }
                           }}
                         >
-                           <div className="flex items-center gap-3">
+                           <div className="flex items-center gap-2 sm:gap-3">
                               <div className={`h-5 w-5 rounded flex items-center justify-center transition-colors ${selectedAddons.includes(a.name) ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white'}`}>
                                  {selectedAddons.includes(a.name) && <Plus className="h-3 w-3" />}
                               </div>
-                              <span className="text-sm font-semibold text-slate-800">{a.name}</span>
+                              <span className="text-xs sm:text-sm font-semibold text-slate-800">{a.name}</span>
                            </div>
-                           <span className="text-xs font-bold text-slate-500">+Rs. {a.price}</span>
+                           <span className="text-[10px] sm:text-xs font-bold text-slate-500">+Rs. {a.price}</span>
                         </div>
                      ))}
                   </div>
                </div>
              )}
           </div>
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-2 sm:mt-4">
              <Button 
-                className="w-full h-14 premium-gradient font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-100 border-none"
+                className="w-full h-12 sm:h-14 premium-gradient font-bold sm:font-black uppercase tracking-wide sm:tracking-widest rounded-xl sm:rounded-2xl shadow-xl shadow-indigo-100 border-none text-sm sm:text-base"
                 onClick={() => selectedItemForModal && addToCart(selectedItemForModal, selectedVariant, selectedAddons)}
              >
                 Add to Basket • Rs. {(
@@ -847,19 +847,19 @@ export default function POSPage() {
       {/* Receipt Layout Modal */}
       <Dialog open={!!orderSuccess} onOpenChange={(open) => !open && setOrderSuccess(null)}>
         <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
-           <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 text-white print:hidden">
+           <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-4 sm:p-6 text-white print:hidden">
               <div className="flex items-center justify-between">
                  <div>
-                    <h2 className="text-xl font-black">Order Complete!</h2>
-                    <p className="text-indigo-200 text-sm">Receipt ready for printing</p>
+                    <h2 className="text-lg sm:text-xl font-black">Order Complete!</h2>
+                    <p className="text-indigo-200 text-xs sm:text-sm">Receipt ready for printing</p>
                  </div>
-                 <div className="h-14 w-14 bg-white/20 rounded-full flex items-center justify-center">
-                    <CheckCircle2 className="h-8 w-8" />
+                 <div className="h-12 w-12 sm:h-14 sm:w-14 bg-white/20 rounded-full flex items-center justify-center">
+                    <CheckCircle2 className="h-6 w-6 sm:h-8 sm:w-8" />
                  </div>
               </div>
            </div>
            
-           <div id="printable-receipt" className="bg-white text-black p-6">
+           <div id="printable-receipt" className="bg-white text-black p-4 sm:p-6 max-h-[50vh] sm:max-h-none overflow-y-auto">
               <div className="text-center pb-4 mb-4 border-b-2 border-dashed border-slate-200">
                  <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full mb-3 print:hidden">
                     <ShoppingCart className="h-6 w-6 text-indigo-600" />
@@ -953,16 +953,16 @@ export default function POSPage() {
               </div>
            </div>
            
-           <div className="p-4 bg-slate-50 border-t flex gap-3 print:hidden">
+           <div className="p-3 sm:p-4 bg-slate-50 border-t flex gap-2 sm:gap-3 print:hidden">
               <Button 
-                 className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 font-bold text-white rounded-xl"
+                 className="flex-1 h-11 sm:h-12 bg-emerald-600 hover:bg-emerald-700 font-bold text-white rounded-xl text-sm sm:text-base"
                  onClick={() => window.print()}
               >
-                 <Printer className="mr-2 h-4 w-4" /> Print Receipt
+                 <Printer className="mr-2 h-4 w-4" /> Print
               </Button>
               <Button 
                  variant="outline"
-                 className="h-12 px-6 font-bold rounded-xl"
+                 className="h-11 sm:h-12 px-4 sm:px-6 font-bold rounded-xl text-sm sm:text-base"
                  onClick={() => setOrderSuccess(null)}
               >
                  Done

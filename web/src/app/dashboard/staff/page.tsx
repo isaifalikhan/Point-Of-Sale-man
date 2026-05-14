@@ -88,6 +88,11 @@ export default function StaffManagement() {
     pin: '',
   });
 
+  const [addingStaff, setAddingStaff] = useState(false);
+  const [creatingRole, setCreatingRole] = useState(false);
+  const [savingRole, setSavingRole] = useState(false);
+  const [savingMember, setSavingMember] = useState(false);
+
 
 
   const fetchCatalog = useCallback(async () => {
@@ -145,6 +150,7 @@ export default function StaffManagement() {
   };
 
   const handleAddStaff = async () => {
+    setAddingStaff(true);
     try {
       await apiClient.post('/auth/staff', {
         ...newMember,
@@ -156,10 +162,13 @@ export default function StaffManagement() {
     } catch (e: unknown) {
       const msg = e as { response?: { data?: { message?: string } } };
       window.alert(msg.response?.data?.message || 'Could not add team member.');
+    } finally {
+      setAddingStaff(false);
     }
   };
 
   const handleCreateRole = async () => {
+    setCreatingRole(true);
     try {
       await apiClient.post('/roles', createPreset);
       await fetchRoles();
@@ -167,6 +176,8 @@ export default function StaffManagement() {
     } catch (e: unknown) {
       const msg = e as { response?: { data?: { message?: string } } };
       window.alert(msg.response?.data?.message || 'Could not create role.');
+    } finally {
+      setCreatingRole(false);
     }
   };
 
@@ -178,6 +189,7 @@ export default function StaffManagement() {
 
   const saveEditedRole = async () => {
     if (!roleBeingEdited) return;
+    setSavingRole(true);
     try {
       await apiClient.patch(`/roles/${roleBeingEdited.id}`, editPreset);
       await fetchRoles();
@@ -186,6 +198,8 @@ export default function StaffManagement() {
     } catch (e: unknown) {
       const msg = e as { response?: { data?: { message?: string } } };
       window.alert(msg.response?.data?.message || 'Could not update role.');
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -218,6 +232,7 @@ export default function StaffManagement() {
 
   const saveMember = async () => {
     if (!memberBeingEdited) return;
+    setSavingMember(true);
     try {
       const body: Record<string, string> = {
         name: memberEditForm.name.trim(),
@@ -238,6 +253,8 @@ export default function StaffManagement() {
     } catch (e: unknown) {
       const msg = e as { response?: { data?: { message?: string } } };
       window.alert(msg.response?.data?.message || 'Could not update team member.');
+    } finally {
+      setSavingMember(false);
     }
   };
 
@@ -371,7 +388,7 @@ export default function StaffManagement() {
                       />
                     </div>
                   </div>
-                  <Button type="button" className="w-full bg-indigo-600" onClick={handleAddStaff}>
+                  <Button type="button" className="w-full bg-indigo-600" onClick={handleAddStaff} loading={addingStaff}>
                     Create account
                   </Button>
                 </div>
@@ -541,6 +558,7 @@ export default function StaffManagement() {
                   className="bg-indigo-600"
                   onClick={handleCreateRole}
                   disabled={!createPreset.name.trim() || createPreset.permissions.length === 0}
+                  loading={creatingRole}
                 >
                   Save preset
                 </Button>
@@ -638,6 +656,7 @@ export default function StaffManagement() {
               className="bg-indigo-600"
               onClick={saveEditedRole}
               disabled={!editPreset.name.trim() || editPreset.permissions.length === 0}
+              loading={savingRole}
             >
               Save changes
             </Button>
@@ -708,7 +727,7 @@ export default function StaffManagement() {
                 Remove PIN entirely
               </Button>
             </div>
-            <Button type="button" className="bg-indigo-600" onClick={saveMember}>
+            <Button type="button" className="bg-indigo-600" onClick={saveMember} loading={savingMember}>
               Save teammate
             </Button>
           </div>

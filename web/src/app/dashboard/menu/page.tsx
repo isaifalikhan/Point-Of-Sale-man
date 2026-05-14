@@ -27,6 +27,7 @@ export default function MenuManagement() {
   
   // New Confirmation State
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; itemId: string | null }>({ isOpen: false, itemId: null });
+  const [savingItem, setSavingItem] = useState(false);
   const [alertConfig, setAlertConfig] = useState<{ isOpen: boolean; title: string; description: string; type: 'info' | 'danger' | 'success' | 'warning' }>({ 
     isOpen: false, 
     title: '', 
@@ -114,6 +115,7 @@ export default function MenuManagement() {
        return;
     }
     
+    setSavingItem(true);
     try {
       const payload = {
         name: formData.name,
@@ -139,6 +141,8 @@ export default function MenuManagement() {
         description: 'There was an error while saving the menu item. Please try again.',
         type: 'danger'
       });
+    } finally {
+      setSavingItem(false);
     }
   };
 
@@ -281,7 +285,7 @@ export default function MenuManagement() {
                 </label>
               </div>
 
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={handleSaveItem}>
+              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={handleSaveItem} loading={savingItem}>
                 {editingItem ? 'Save Changes' : 'Create Item'}
               </Button>
             </div>
