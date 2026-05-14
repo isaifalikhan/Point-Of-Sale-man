@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useMemo, useRef, useState } from "react";
 import {
   motion,
@@ -31,7 +30,31 @@ import { BRAND } from "@/config/brand";
 import { Reveal } from "@/components/marketing/reveal";
 import { cn } from "@/lib/utils";
 
-/** Stable Unsplash CDN URLs (ixlib + crop) so images load consistently. */
+/** Native img avoids next/image remotePatterns issues (e.g. invalid `**` host) so Unsplash always loads. */
+function LuxuryFillImg({
+  src,
+  alt,
+  className,
+  priority,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  priority?: boolean;
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={cn("absolute inset-0 h-full w-full object-cover", className)}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      draggable={false}
+      {...(priority ? { fetchPriority: "high" as const } : {})}
+    />
+  );
+}
+
 function unsplashPhoto(photoPath: string, w: number) {
   return `https://images.unsplash.com/${photoPath}?ixlib=rb-4.0.3&auto=format&fit=crop&w=${w}&q=85`;
 }
@@ -193,16 +216,12 @@ export function LuxuryHomeSections() {
       {/* Hero */}
       <section ref={heroRef} className="relative min-h-[100dvh] overflow-hidden">
         <motion.div style={{ y: heroImgY }} className="absolute inset-0">
-                <Image
-                  src={HERO_IMAGE}
-                  alt=""
-                  fill
-                  priority
-                  className="object-cover scale-105"
-                  sizes="100vw"
-                  unoptimized
-                  referrerPolicy="no-referrer"
-                />
+          <LuxuryFillImg
+            src={HERO_IMAGE}
+            alt=""
+            priority
+            className="scale-105 object-center"
+          />
         </motion.div>
         <motion.div
           style={{ opacity: heroOpacity }}
@@ -326,15 +345,16 @@ export function LuxuryHomeSections() {
             </div>
             <div className="relative lg:col-span-7">
               <div className="relative aspect-[4/5] max-h-[520px] overflow-hidden rounded-2xl border border-white/[0.08] md:aspect-[16/11] md:max-h-none">
-                <Image
+                {/* <LuxuryFillImg
                   src={unsplashPhoto("photo-1550966873-12d2b48cc04d", 1200)}
                   alt="Culinary craft"
-                  fill
-                  className="object-cover"
-                  sizes="(min-width: 1024px) 50vw, 100vw"
-                  unoptimized
-                  referrerPolicy="no-referrer"
-                />
+                  className="object-center"
+                /> */}
+                <LuxuryFillImg
+  src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1200&auto=format&fit=crop"
+  alt="Luxury restaurant dining"
+  className="object-center"
+/>
                 <div className="absolute inset-0 bg-gradient-to-tr from-[#0B0B0B]/50 to-transparent" />
               </div>
               <div className="lux-glass absolute -bottom-8 left-6 right-6 max-w-sm rounded-2xl p-6 md:left-auto md:right-8 md:top-1/2 md:bottom-auto md:-translate-y-1/2 md:max-w-xs">
@@ -397,14 +417,10 @@ export function LuxuryHomeSections() {
                   className="group lux-glass overflow-hidden rounded-2xl"
                 >
                   <div className="relative aspect-[16/10] overflow-hidden">
-                    <Image
+                    <LuxuryFillImg
                       src={item.image}
                       alt={item.title}
-                      fill
-                      className="object-cover transition-transform duration-700 group-hover:scale-105"
-                      sizes="(min-width: 768px) 45vw, 100vw"
-                      unoptimized
-                      referrerPolicy="no-referrer"
+                      className="transition-transform duration-700 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0B0B0B] via-transparent to-transparent opacity-80" />
                     <div className="absolute left-5 top-5 flex size-11 items-center justify-center rounded-xl border border-white/20 bg-black/30 text-[#E7C27D] backdrop-blur-md">
@@ -488,19 +504,12 @@ export function LuxuryHomeSections() {
                 key={`${img.alt}-${i}`}
                 className="group relative aspect-square overflow-hidden rounded-xl border border-white/[0.08] sm:aspect-[4/5]"
               >
-                <div className="relative h-full w-full min-h-[12rem]">
-                  <Image
-                    src={img.src}
-                    alt={img.alt}
-                    fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
-                    sizes="(min-width: 1024px) 33vw, 50vw"
-                    loading="lazy"
-                    unoptimized
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-[#0B0B0B]/0 transition-colors duration-500 group-hover:bg-[#0B0B0B]/25" />
-                </div>
+                <LuxuryFillImg
+                  src={img.src}
+                  alt={img.alt}
+                  className="transition-transform duration-700 group-hover:scale-[1.04]"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-[#0B0B0B]/0 transition-colors duration-500 group-hover:bg-[#0B0B0B]/25" />
               </div>
             ))}
           </Reveal>
@@ -626,13 +635,10 @@ export function LuxuryHomeSections() {
       {/* Reservation / CTA */}
       <section id="reserve" className="scroll-mt-28 relative overflow-hidden border-t border-white/[0.08] py-24 md:py-32">
         <div className="absolute inset-0">
-          <Image
+          <LuxuryFillImg
             src={unsplashPhoto("photo-1559339352-11d035aa65de", 1600)}
             alt=""
-            fill
-            className="object-cover opacity-40"
-            unoptimized
-            referrerPolicy="no-referrer"
+            className="opacity-40"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B0B0B] via-[#0B0B0B]/92 to-[#0B0B0B]/85" />
         </div>
