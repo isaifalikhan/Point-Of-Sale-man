@@ -204,22 +204,22 @@ export default function MenuManagement() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Create Menu Item'}</DialogTitle>
+              <DialogTitle className="text-lg sm:text-xl">{editingItem ? 'Edit Menu Item' : 'Create Menu Item'}</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
-              <div className="flex justify-center mb-4">
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              <div className="flex justify-center mb-2 sm:mb-4">
                  <div 
-                   className="h-32 w-32 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:bg-slate-100 transition-colors relative"
+                   className="h-24 w-24 sm:h-32 sm:w-32 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:bg-slate-100 transition-colors relative active:scale-95"
                    onClick={() => fileInputRef.current?.click()}
                  >
                     {formData.image ? (
                        <OptimizedImage src={formData.image} fill sizes="128px" className="object-cover" alt="Preview" />
                     ) : (
                        <>
-                         <ImageIcon className="h-8 w-8 text-slate-400 mb-2" />
+                         <ImageIcon className="h-6 w-6 sm:h-8 sm:w-8 text-slate-400 mb-1 sm:mb-2" />
                          <span className="text-[10px] font-bold text-slate-500 uppercase">Upload Image</span>
                        </>
                     )}
@@ -234,27 +234,29 @@ export default function MenuManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label>Item Name</Label>
+                <Label className="text-xs sm:text-sm">Item Name</Label>
                 <Input 
                   placeholder="e.g. Classic Cheeseburger" 
+                  className="h-10 sm:h-9"
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div className="space-y-2">
-                  <Label>Base Price</Label>
+                  <Label className="text-xs sm:text-sm">Base Price</Label>
                   <Input 
                     type="number" 
                     placeholder="490" 
+                    className="h-10 sm:h-9"
                     value={formData.price}
                     onChange={e => setFormData({...formData, price: e.target.value})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label className="text-xs sm:text-sm">Category</Label>
                   <select 
-                    className="flex h-10 w-full items-center justify-between whitespace-nowrap rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm shadow-sm"
+                    className="flex h-10 sm:h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm shadow-sm"
                     value={formData.categoryId}
                     onChange={e => setFormData({...formData, categoryId: e.target.value})}
                   >
@@ -266,18 +268,19 @@ export default function MenuManagement() {
               </div>
               
               <div className="space-y-2">
-                <Label>Description</Label>
+                <Label className="text-xs sm:text-sm">Description</Label>
                 <Input 
                   placeholder="Short description..." 
+                  className="h-10 sm:h-9"
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3 border rounded-lg bg-slate-50">
+              <div className="flex items-center justify-between p-2.5 sm:p-3 border rounded-lg bg-slate-50">
                 <div>
-                   <Label className="text-base font-bold">Item Availability</Label>
-                   <p className="text-xs text-slate-500">Is this item currently in stock?</p>
+                   <Label className="text-sm sm:text-base font-bold">Item Availability</Label>
+                   <p className="text-[10px] sm:text-xs text-slate-500">Is this item currently in stock?</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" checked={formData.isAvailable} onChange={(e) => setFormData({...formData, isAvailable: e.target.checked})} />
@@ -285,7 +288,7 @@ export default function MenuManagement() {
                 </label>
               </div>
 
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={handleSaveItem} loading={savingItem}>
+              <Button className="w-full h-11 sm:h-10 bg-indigo-600 hover:bg-indigo-700 text-sm sm:text-base" onClick={handleSaveItem} loading={savingItem}>
                 {editingItem ? 'Save Changes' : 'Create Item'}
               </Button>
             </div>

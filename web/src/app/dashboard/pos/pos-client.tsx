@@ -722,7 +722,7 @@ export default function POSPage() {
                          disabled={!amountTendered || isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) <= 0}
                          onClick={() => {
                            if (!amountTendered || isNaN(parseFloat(amountTendered))) return;
-                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CARD' });
+                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CARD' }]);
                            setAmountTendered('');
                          }}
                        >

@@ -291,16 +291,16 @@ export default function InventoryPage() {
       <Dialog open={isRecipeOpen} onOpenChange={setIsRecipeOpen}>
          <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-               <DialogTitle>Recipe: {selectedMenuItem?.name}</DialogTitle>
-               <DialogDescription>Define the ingredients and quantities used per serving.</DialogDescription>
+               <DialogTitle className="text-lg sm:text-xl">Recipe: {selectedMenuItem?.name}</DialogTitle>
+               <DialogDescription className="text-xs sm:text-sm">Define the ingredients and quantities used per serving.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-6 py-4">
-               <div className="bg-slate-50 p-4 rounded-xl space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 sm:space-y-6 py-2 sm:py-4">
+               <div className="bg-slate-50 p-3 sm:p-4 rounded-xl space-y-3 sm:space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                      <div className="space-y-2">
-                        <Label>Select Ingredient</Label>
+                        <Label className="text-xs sm:text-sm">Select Ingredient</Label>
                         <select 
-                          className="flex h-9 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                          className="flex h-10 sm:h-9 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                           value={recipeForm.ingredientId}
                           onChange={e => setRecipeForm({...recipeForm, ingredientId: e.target.value})}
                         >
@@ -311,23 +311,23 @@ export default function InventoryPage() {
                         </select>
                      </div>
                      <div className="space-y-2">
-                        <Label>Qty per Serving</Label>
-                        <Input type="number" value={recipeForm.quantity} onChange={e => setRecipeForm({...recipeForm, quantity: parseFloat(e.target.value)})} />
+                        <Label className="text-xs sm:text-sm">Qty per Serving</Label>
+                        <Input type="number" className="h-10 sm:h-9" value={recipeForm.quantity} onChange={e => setRecipeForm({...recipeForm, quantity: parseFloat(e.target.value)})} />
                      </div>
                   </div>
-                  <Button onClick={handleLinkIngredient} className="w-full bg-slate-900 text-white font-bold">Add to Recipe</Button>
+                  <Button onClick={handleLinkIngredient} className="w-full h-10 sm:h-9 bg-slate-900 text-white font-bold text-sm">Add to Recipe</Button>
                </div>
 
                <div className="space-y-2">
-                  <h5 className="text-sm font-black text-slate-900 uppercase tracking-widest px-1">Current Recipe</h5>
-                  <div className="border rounded-xl divide-y divide-slate-100 overflow-hidden">
+                  <h5 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest px-1">Current Recipe</h5>
+                  <div className="border rounded-xl divide-y divide-slate-100 overflow-hidden max-h-[30vh] overflow-y-auto">
                      {currentRecipe.map((ri: any) => (
-                        <div key={ri.id} className="flex justify-between items-center p-3 text-sm">
+                        <div key={ri.id} className="flex justify-between items-center p-2.5 sm:p-3 text-xs sm:text-sm">
                            <span className="font-bold text-slate-700">{ri.ingredient.name}</span>
                            <span className="font-black text-indigo-600">{ri.quantity} <span className="text-[10px] uppercase opacity-50">{ri.ingredient.stockUnit}</span></span>
                         </div>
                      ))}
-                     {currentRecipe.length === 0 && <div className="p-8 text-center text-slate-400 italic">No ingredients linked yet.</div>}
+                     {currentRecipe.length === 0 && <div className="p-6 sm:p-8 text-center text-slate-400 italic text-sm">No ingredients linked yet.</div>}
                   </div>
                </div>
             </div>
@@ -335,34 +335,34 @@ export default function InventoryPage() {
       </Dialog>
       <Dialog open={isRestockOpen} onOpenChange={setIsRestockOpen}>
          <DialogContent className="sm:max-w-[400px] border-none shadow-2xl">
-            <DialogHeader className="pb-4">
-               <DialogTitle className="text-2xl font-black text-slate-900">Restock Material</DialogTitle>
-               <DialogDescription className="text-slate-500 font-medium">Adding stock for <span className="text-indigo-600 font-bold">{selectedRestockItem?.name}</span></DialogDescription>
+            <DialogHeader className="pb-2 sm:pb-4">
+               <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">Restock Material</DialogTitle>
+               <DialogDescription className="text-slate-500 font-medium text-xs sm:text-sm">Adding stock for <span className="text-indigo-600 font-bold">{selectedRestockItem?.name}</span></DialogDescription>
             </DialogHeader>
-            <div className="space-y-6 py-6 px-2">
+            <div className="space-y-4 sm:space-y-6 py-4 sm:py-6 px-1 sm:px-2">
                <div className="relative">
                   <Label className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 absolute -top-2 left-4 bg-white px-2">Quantity to Add</Label>
-                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border-2 border-slate-100 focus-within:border-indigo-500 transition-all">
-                     <Package className="h-6 w-6 text-indigo-500" />
+                  <div className="flex items-center gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-2xl border-2 border-slate-100 focus-within:border-indigo-500 transition-all">
+                     <Package className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500" />
                      <Input 
                         type="number" 
                         value={restockAmount} 
                         onChange={e => setRestockAmount(parseFloat(e.target.value))} 
-                        className="text-3xl font-black border-0 bg-transparent focus-visible:ring-0 p-0 h-auto"
+                        className="text-2xl sm:text-3xl font-black border-0 bg-transparent focus-visible:ring-0 p-0 h-auto"
                         autoFocus
                      />
-                     <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{selectedRestockItem?.stockUnit}</span>
+                     <span className="text-xs sm:text-sm font-bold text-slate-400 uppercase tracking-widest">{selectedRestockItem?.stockUnit}</span>
                   </div>
                </div>
                
-               <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Button variant="ghost" onClick={() => setRestockAmount(prev => prev + 5)} className="font-bold h-12 rounded-xl bg-slate-100 hover:bg-slate-200">+5</Button>
-                  <Button variant="ghost" onClick={() => setRestockAmount(prev => prev + 10)} className="font-bold h-12 rounded-xl bg-slate-100 hover:bg-slate-200">+10</Button>
+               <div className="grid grid-cols-2 gap-2 sm:gap-3 pt-2">
+                  <Button variant="ghost" onClick={() => setRestockAmount(prev => prev + 5)} className="font-bold h-10 sm:h-12 rounded-xl bg-slate-100 hover:bg-slate-200">+5</Button>
+                  <Button variant="ghost" onClick={() => setRestockAmount(prev => prev + 10)} className="font-bold h-10 sm:h-12 rounded-xl bg-slate-100 hover:bg-slate-200">+10</Button>
                </div>
 
                <Button 
                   onClick={handleRestock} 
-                  className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg shadow-lg shadow-indigo-200 rounded-2xl transition-all active:scale-[0.98]"
+                  className="w-full h-12 sm:h-14 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base sm:text-lg shadow-lg shadow-indigo-200 rounded-xl sm:rounded-2xl transition-all active:scale-[0.98]"
                >
                   Update Inventory
                </Button>

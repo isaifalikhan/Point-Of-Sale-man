@@ -243,29 +243,31 @@ export default function FloorPlanManagement() {
                   </Button>
                 }
               />
-            <DialogContent>
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Create New Table</DialogTitle>
+                <DialogTitle className="text-lg sm:text-xl">Create New Table</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
                 <div className="space-y-2">
-                  <Label>Table Name / Number</Label>
+                  <Label className="text-xs sm:text-sm">Table Name / Number</Label>
                   <Input 
+                    className="h-10 sm:h-9"
                     placeholder="e.g. Table 5 or Window A1" 
                     value={newTable.name}
                     onChange={(e) => setNewTable({ ...newTable, name: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Capacity (Seating)</Label>
+                  <Label className="text-xs sm:text-sm">Capacity (Seating)</Label>
                   <Input 
                     type="number" 
+                    className="h-10 sm:h-9"
                     value={newTable.capacity}
                     onChange={(e) => setNewTable({ ...newTable, capacity: parseInt(e.target.value) })}
                   />
-                  <p className="text-xs text-slate-500 italic mt-1">Note: 1-3 seats will render as a circle. 4+ seats will render as a rectangle.</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500 italic mt-1">Note: 1-3 seats = circle. 4+ seats = rectangle.</p>
                 </div>
-                <Button onClick={handleCreateTable} className="w-full bg-indigo-600" loading={creatingTable}>Drop Table to Canvas</Button>
+                <Button onClick={handleCreateTable} className="w-full h-11 sm:h-10 bg-indigo-600 text-sm" loading={creatingTable}>Drop Table to Canvas</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -360,27 +362,29 @@ export default function FloorPlanManagement() {
       </div>
 
       <Dialog open={!!editingTable} onOpenChange={(open) => !open && setEditingTable(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Table Configuration</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">Edit Table Configuration</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
             <div className="space-y-2">
-              <Label>Table Name / Number</Label>
+              <Label className="text-xs sm:text-sm">Table Name / Number</Label>
               <Input 
+                className="h-10 sm:h-9"
                 value={editingTable?.name || ''}
                 onChange={(e) => setEditingTable({ ...editingTable, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Capacity (Seating)</Label>
+              <Label className="text-xs sm:text-sm">Capacity (Seating)</Label>
               <Input 
                 type="number" 
+                className="h-10 sm:h-9"
                 value={editingTable?.capacity || 2}
                 onChange={(e) => setEditingTable({ ...editingTable, capacity: parseInt(e.target.value) })}
               />
             </div>
-            <Button onClick={handleUpdateTable} className="w-full bg-indigo-600">Save Changes</Button>
+            <Button onClick={handleUpdateTable} className="w-full h-11 sm:h-10 bg-indigo-600 text-sm">Save Changes</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -324,46 +324,49 @@ export default function StaffManagement() {
                   </Button>
                 }
               />
-              <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>New employee</DialogTitle>
+                  <DialogTitle className="text-lg sm:text-xl">New employee</DialogTitle>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-3 sm:gap-4 py-2 sm:py-4">
                   <div className="grid gap-2">
-                    <Label>Full name</Label>
+                    <Label className="text-xs sm:text-sm">Full name</Label>
                     <Input
+                      className="h-10 sm:h-9"
                       value={newMember.name}
                       placeholder="Jordan Lee"
                       onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
                     />
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                     <div className="grid gap-2">
-                      <Label>Email login</Label>
+                      <Label className="text-xs sm:text-sm">Email login</Label>
                       <Input
                         type="email"
+                        className="h-10 sm:h-9"
                         value={newMember.email}
                         onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label>Initial password</Label>
+                      <Label className="text-xs sm:text-sm">Initial password</Label>
                       <Input
                         type="password"
+                        className="h-10 sm:h-9"
                         value={newMember.password}
                         onChange={(e) => setNewMember({ ...newMember, password: e.target.value })}
                       />
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                     <div className="grid gap-2">
-                      <Label>Role preset</Label>
+                      <Label className="text-xs sm:text-sm">Role preset</Label>
                       <select
-                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        className="flex h-10 sm:h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={newMember.roleId}
                         onChange={(e) => setNewMember({ ...newMember, roleId: e.target.value })}
                       >
-                        <option value="">No role (login only — add a preset later)</option>
+                        <option value="">No role (login only)</option>
                         {roles.map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.name}
@@ -373,11 +376,12 @@ export default function StaffManagement() {
                       </select>
                     </div>
                     <div className="grid gap-2">
-                      <Label>POS PIN (optional)</Label>
+                      <Label className="text-xs sm:text-sm">POS PIN (optional)</Label>
                       <Input
                         inputMode="numeric"
                         maxLength={4}
                         placeholder="4 digits"
+                        className="h-10 sm:h-9"
                         value={newMember.pin}
                         onChange={(e) =>
                           setNewMember({
@@ -388,7 +392,7 @@ export default function StaffManagement() {
                       />
                     </div>
                   </div>
-                  <Button type="button" className="w-full bg-indigo-600" onClick={handleAddStaff} loading={addingStaff}>
+                  <Button type="button" className="w-full h-11 sm:h-10 bg-indigo-600 text-sm" onClick={handleAddStaff} loading={addingStaff}>
                     Create account
                   </Button>
                 </div>
@@ -614,7 +618,7 @@ export default function StaffManagement() {
       </Tabs>
 
       <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit “{roleBeingEdited?.name}”</DialogTitle>
           </DialogHeader>
@@ -665,7 +669,7 @@ export default function StaffManagement() {
       </Dialog>
 
       <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit teammate</DialogTitle>
           </DialogHeader>
