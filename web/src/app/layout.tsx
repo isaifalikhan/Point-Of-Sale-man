@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Outfit } from "next/font/google";
+import { Geist_Mono, Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { BRAND } from "@/config/brand";
 
-const outfit = Outfit({
+const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
+});
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-display",
 });
 
 const geistMono = Geist_Mono({
@@ -14,7 +19,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: BRAND.name,
+  title: {
+    default: BRAND.name,
+    template: `%s · ${BRAND.name}`,
+  },
   description: BRAND.shortDescription,
 };
 
@@ -24,7 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${playfair.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <body className="font-sans min-h-full flex flex-col">{children}</body>
     </html>
   );

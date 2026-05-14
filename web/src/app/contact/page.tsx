@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { BrandMark } from '@/components/layout/brand-mark';
-import { BRAND } from '@/config/brand';
+import { MarketingShell } from '@/components/marketing/marketing-shell';
 import { 
   ArrowRight,
   Mail,
@@ -64,51 +63,17 @@ export default function ContactPage() {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-mesh-gradient opacity-[0.85]" />
-      <div aria-hidden className="pointer-events-none absolute -top-28 left-1/2 h-[42rem] w-[42rem] -translate-x-1/2 rounded-full bg-primary/25 blur-[120px]" />
-      <div aria-hidden className="pointer-events-none absolute -right-44 bottom-1/3 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/25 blur-[100px]" />
-      <div aria-hidden className="pointer-events-none absolute left-0 top-1/2 h-[32rem] w-[32rem] -translate-y-1/2 rounded-full bg-emerald-400/15 blur-[100px]" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:48px_48px]"
-      />
-
-      <header className="sticky top-0 z-50 border-b border-white/30 bg-[oklch(1_0_0_/0.55)] px-6 py-4 shadow-inner-gloss backdrop-blur-xl md:px-10">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-6">
-          <Link href="/" className="rounded-xl outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring">
-            <BrandMark />
-          </Link>
-          <nav className="hidden gap-8 text-xs font-bold uppercase tracking-wider text-muted-foreground md:flex">
-            <Link href="/#features" className="transition hover:text-foreground">Features</Link>
-            <Link href="/#testimonials" className="transition hover:text-foreground">Testimonials</Link>
-            <Link href="/#pricing" className="transition hover:text-foreground">Pricing</Link>
-            <Link href="/about" className="transition hover:text-foreground">About</Link>
-            <Link href="/contact" className="text-foreground">Contact</Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Link href="/login" className="text-sm font-semibold text-muted-foreground transition hover:text-foreground">Sign in</Link>
-            <Link href="/signup">
-              <Button className="h-10 rounded-full bg-gradient-to-b from-primary to-[oklch(0.44_0.19_268)] px-6 shadow-gloss-soft ring-1 ring-white/20">
-                Get started
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <MarketingShell>
       <main className="relative z-10">
         {/* Hero Section */}
         <section className="mx-auto flex max-w-7xl flex-col items-center px-4 pb-12 pt-16 text-center md:px-8 md:pt-24">
-          <span className="glass-panel relative mb-7 inline-flex items-center gap-2 overflow-hidden rounded-full border-white/35 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-inner-gloss">
+          <span className="glass-panel relative mb-7 inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#E7C27D]">
             <MessageSquare className="size-4" aria-hidden />
             Get in touch
           </span>
-          <h1 className="font-heading mx-auto max-w-4xl text-4xl font-extrabold leading-[1.08] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-            We'd love to{' '}
-            <span className="bg-gradient-to-r from-primary via-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">
-              hear from you
-            </span>
+          <h1 className="mx-auto max-w-4xl font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.08] tracking-tight text-[#F5F5F5] md:text-5xl lg:text-6xl">
+            We&apos;d love to{' '}
+            <span className="lux-text-gradient">hear from you</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
             Have questions about RestoOS? Want to schedule a demo? Our team is here to help you find the perfect solution for your restaurant.
@@ -155,7 +120,7 @@ export default function ContactPage() {
                       <Input
                         id="firstName"
                         placeholder="John"
-                        className="h-12 rounded-xl border-white/40 bg-white/50 shadow-inner-gloss backdrop-blur-sm"
+                        className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                       />
                     </div>
                     <div className="space-y-2">
@@ -163,7 +128,7 @@ export default function ContactPage() {
                       <Input
                         id="lastName"
                         placeholder="Doe"
-                        className="h-12 rounded-xl border-white/40 bg-white/50 shadow-inner-gloss backdrop-blur-sm"
+                        className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                       />
                     </div>
                   </div>
@@ -174,7 +139,7 @@ export default function ContactPage() {
                       id="email"
                       type="email"
                       placeholder="john@restaurant.com"
-                      className="h-12 rounded-xl border-white/40 bg-white/50 shadow-inner-gloss backdrop-blur-sm"
+                      className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                     />
                   </div>
                   
@@ -183,7 +148,7 @@ export default function ContactPage() {
                     <Input
                       id="restaurant"
                       placeholder="The Best Bistro"
-                      className="h-12 rounded-xl border-white/40 bg-white/50 shadow-inner-gloss backdrop-blur-sm"
+                      className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                     />
                   </div>
                   
@@ -191,7 +156,7 @@ export default function ContactPage() {
                     <Label htmlFor="subject" className="text-sm font-medium">Subject</Label>
                     <select
                       id="subject"
-                      className="flex h-12 w-full rounded-xl border border-white/40 bg-white/50 px-4 text-sm shadow-inner-gloss backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex h-12 w-full rounded-xl border border-white/[0.1] bg-[#111111]/90 px-4 text-sm text-[#F5F5F5] shadow-none backdrop-blur-sm transition-colors focus-visible:border-[#D4A64F]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A64F]/25"
                     >
                       <option value="">Select a topic...</option>
                       <option value="sales">Sales inquiry</option>
@@ -208,11 +173,11 @@ export default function ContactPage() {
                       id="message"
                       rows={5}
                       placeholder="Tell us about your restaurant and how we can help..."
-                      className="flex w-full rounded-xl border border-white/40 bg-white/50 px-4 py-3 text-sm shadow-inner-gloss backdrop-blur-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex w-full rounded-xl border border-white/[0.1] bg-[#111111]/90 px-4 py-3 text-sm text-[#F5F5F5] shadow-none backdrop-blur-sm transition-colors placeholder:text-muted-foreground focus-visible:border-[#D4A64F]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A64F]/25"
                     />
                   </div>
                   
-                  <Button type="submit" size="lg" className="h-14 w-full rounded-xl text-base shadow-gloss-lg">
+                  <Button type="submit" size="lg" className="lux-gold-gradient h-14 w-full rounded-xl border-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B]">
                     <Send className="mr-2 h-5 w-5" />
                     Send message
                   </Button>
@@ -304,41 +269,6 @@ export default function ContactPage() {
           </div>
         </section>
       </main>
-
-      <footer className="relative z-10 border-t border-white/10 bg-slate-950 px-6 py-14 text-slate-400">
-        <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-5">
-          <div className="md:col-span-2">
-            <BrandMark className="text-white" iconClassName="shadow-gloss-icon" />
-            <p className="mt-5 max-w-xs text-sm leading-relaxed text-slate-500">{BRAND.shortDescription}</p>
-          </div>
-          <div>
-            <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-300">Product</h4>
-            <ul className="space-y-3 text-sm">
-              <li><Link href="/features" className="hover:text-white">Features</Link></li>
-              <li><Link href="/#pricing" className="hover:text-white">Pricing</Link></li>
-              <li><Link href="#" className="hover:text-white">Integrations</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-300">Company</h4>
-            <ul className="space-y-3 text-sm">
-              <li><Link href="/about" className="hover:text-white">About</Link></li>
-              <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
-              <li><Link href="#" className="hover:text-white">Careers</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-300">Legal</h4>
-            <ul className="space-y-3 text-sm">
-              <li><Link href="#" className="hover:text-white">Privacy Policy</Link></li>
-              <li><Link href="#" className="hover:text-white">Terms of Service</Link></li>
-            </ul>
-          </div>
-        </div>
-        <div className="mx-auto mt-12 max-w-6xl border-t border-white/10 pt-8 text-center text-xs text-slate-600">
-          © {new Date().getFullYear()} {BRAND.name}. Crafted for high-traffic hospitality.
-        </div>
-      </footer>
-    </div>
+    </MarketingShell>
   );
 }

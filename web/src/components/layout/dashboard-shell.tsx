@@ -22,6 +22,7 @@ import {
 } from '@/config/navigation';
 import { cn } from '@/lib/utils';
 import { hasAnyPermission, readPermissionsFromStorage } from '@/lib/rbac';
+import { ConfirmationModal } from '@/components/ui/confirmation-modal';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,6 +30,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [businessType, setBusinessType] = useState<'RESTAURANT' | 'CLOTHING'>('RESTAURANT');
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const isPosMode = pathname.includes('/dashboard/pos');
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userPermissions');
+    setLogoutConfirmOpen(false);
     router.push('/login');
   }
 
@@ -186,7 +189,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 title="Sign out"
-                onClick={handleLogout}
+                onClick={() => setLogoutConfirmOpen(true)}
                 className="rounded-full p-1.5 sm:p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -201,6 +204,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Mobile Navigation Drawer */}
+      <ConfirmationModal
+        isOpen={logoutConfirmOpen}
+        onOpenChange={setLogoutConfirmOpen}
+        title="Sign out?"
+        description="You will need to sign in again to access the dashboard and POS."
+        confirmText="Sign out"
+        cancelText="Stay signed in"
+        type="warning"
+        onConfirm={handleLogout}
+      />
+
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-72 p-0">
           <SheetHeader className="p-4 border-b">

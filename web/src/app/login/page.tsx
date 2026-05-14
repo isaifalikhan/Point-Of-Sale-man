@@ -55,6 +55,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       eyebrow="Secure workspace"
+      showSignupCta={false}
       footer={
         <p className="mt-8 text-center text-xs text-muted-foreground">
           <Link href="/" className="font-medium hover:text-foreground">
@@ -111,13 +112,6 @@ export default function LoginPage() {
         <Button type="submit" className="h-11 w-full rounded-xl text-[15px]" loading={loading}>
           Continue
         </Button>
-
-        <p className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" className="font-semibold text-primary underline-offset-4 hover:underline">
-            Create one
-          </Link>
-        </p>
       </form>
     </AuthShell>
   );

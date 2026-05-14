@@ -9,14 +9,16 @@ type AuthShellProps = {
   /** e.g. "Welcome back" */
   eyebrow?: string;
   footer?: ReactNode;
+  /** When false, hides the header link to signup (e.g. on login). */
+  showSignupCta?: boolean;
 };
 
-export function AuthShell({ children, eyebrow, footer }: AuthShellProps) {
+export function AuthShell({ children, eyebrow, footer, showSignupCta = true }: AuthShellProps) {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="luxury-marketing relative min-h-screen overflow-hidden bg-[#0B0B0B] text-[#F5F5F5]">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-mesh-gradient opacity-90"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(212,166,79,0.1),transparent_55%)]"
       />
       <div
         aria-hidden
@@ -32,15 +34,17 @@ export function AuthShell({ children, eyebrow, footer }: AuthShellProps) {
       />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-6 md:px-10">
-        <Link href="/" className="rounded-xl outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring">
-          <BrandMark />
+        <Link href="/" className="rounded-xl outline-none ring-offset-[#0B0B0B] focus-visible:ring-2 focus-visible:ring-[#D4A64F]/60">
+          <BrandMark className="text-[#F5F5F5]" iconClassName="lux-gold-gradient text-[#0B0B0B] shadow-none ring-0" />
         </Link>
-        <Link
-          href="/signup"
-          className="glass-panel hidden rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wider text-foreground shadow-sm hover:bg-card/90 sm:inline-flex"
-        >
-          New business
-        </Link>
+        {showSignupCta ? (
+          <Link
+            href="/signup"
+            className="glass-panel hidden rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wider text-foreground shadow-sm hover:bg-card/90 sm:inline-flex"
+          >
+            New business
+          </Link>
+        ) : null}
       </header>
 
       <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl gap-10 px-4 pb-14 pt-6 md:grid-cols-[1.05fr_1fr] md:items-center md:px-8 lg:max-w-7xl">
@@ -54,11 +58,9 @@ export function AuthShell({ children, eyebrow, footer }: AuthShellProps) {
                 {eyebrow}
               </p>
             )}
-            <h1 className="relative font-heading text-4xl font-bold leading-[1.1] tracking-tight text-foreground lg:text-[2.65rem]">
+            <h1 className="relative font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.1] tracking-tight text-[#F5F5F5] lg:text-[2.65rem]">
               Run service, menus, and staff from one{' '}
-              <span className="bg-gradient-to-r from-primary via-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">
-                luminous
-              </span>{' '}
+              <span className="lux-text-gradient">luminous</span>{' '}
               command center.
             </h1>
             <p className="relative mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
