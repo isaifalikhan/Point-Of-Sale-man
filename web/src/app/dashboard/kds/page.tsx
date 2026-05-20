@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Clock, MapPin, ChefHat, Timer, Loader2 } from 'lucide-react';
+import { CheckCircle2, MapPin, ChefHat, Timer, Loader2, Bike, Phone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
 
@@ -114,6 +114,25 @@ export default function KDSPage() {
                   {order.type.replace('_', ' ')}
                 </Badge>
               </div>
+              {order.type === 'DELIVERY' && (order.deliveryRiderName || order.deliveryAddress) && (
+                <div className="mt-2 space-y-1 rounded-lg border border-indigo-200 bg-indigo-50/80 p-2 text-xs text-slate-700">
+                  {order.deliveryRiderName && (
+                    <p className="flex items-center gap-1 font-semibold">
+                      <Bike className="h-3.5 w-3.5 text-indigo-600" />
+                      Rider: {order.deliveryRiderName}
+                    </p>
+                  )}
+                  {order.deliveryPhone && (
+                    <p className="flex items-center gap-1">
+                      <Phone className="h-3.5 w-3.5 text-indigo-600" />
+                      {order.deliveryPhone}
+                    </p>
+                  )}
+                  {order.deliveryAddress && (
+                    <p className="leading-snug text-slate-600">{order.deliveryAddress}</p>
+                  )}
+                </div>
+              )}
             </CardHeader>
             <CardContent className="px-5 py-4 flex-1 bg-white space-y-3">
               {order.items.map((orderItem: any, i: number) => {

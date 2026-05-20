@@ -11,6 +11,15 @@ import { Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Loader2, CheckCi
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { apiClient } from '@/lib/api-client';
 import { useDebounce } from '@/hooks/use-debounce';
+import {
+  DeliveryDetailsFields,
+  isDeliveryDetailsValid,
+  type DeliveryDetails,
+} from '@/components/pos/delivery-details-fields';
+import { BRAND } from '@/config/brand';
+import { VENUE } from '@/config/venue-public';
+
+const EMPTY_DELIVERY: DeliveryDetails = { riderName: '', phone: '', address: '' };
 
 interface MenuItem {
   id: string;
@@ -149,6 +158,7 @@ export default function POSPage() {
   
   const [tables, setTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
+  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(EMPTY_DELIVERY);
 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -179,6 +189,12 @@ export default function POSPage() {
   useEffect(() => {
     setPrintPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (orderType !== 'DELIVERY') {
+      setDeliveryDetails(EMPTY_DELIVERY);
+    }
+  }, [orderType]);
 
   useEffect(() => {
     if (orderSuccess) {
@@ -251,6 +267,11 @@ export default function POSPage() {
 
   const finalizeOrder = async (paymentsArray: {amount: number, method: string}[]) => {
     if (cart.length === 0 || branches.length === 0) return;
+
+    if (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails)) {
+      alert('Please enter rider name, customer cell number, and delivery address.');
+      return;
+    }
     
     setProcessingOrder(true);
     try {
@@ -259,8 +280,13 @@ export default function POSPage() {
         branchId: branches[0].id,
         tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
         payments: paymentsArray,
-
-
+        ...(orderType === 'DELIVERY'
+          ? {
+              deliveryRiderName: deliveryDetails.riderName.trim(),
+              deliveryPhone: deliveryDetails.phone.trim(),
+              deliveryAddress: deliveryDetails.address.trim(),
+            }
+          : {}),
         items: cart.map(c => ({
           itemId: c.item.id,
           quantity: c.quantity,
@@ -275,12 +301,21 @@ export default function POSPage() {
         orderType,
         payments: paymentsArray,
         cashier: posUser || 'Staff',
-        timestamp: new Date()
+        timestamp: new Date(),
+        delivery:
+          orderType === 'DELIVERY'
+            ? {
+                riderName: deliveryDetails.riderName.trim(),
+                phone: deliveryDetails.phone.trim(),
+                address: deliveryDetails.address.trim(),
+              }
+            : null,
       };
       
       setOrderSuccess(orderSnapshot);
       setCart([]);
       setSelectedTableId('');
+      setDeliveryDetails(EMPTY_DELIVERY);
       setIsPaymentModalOpen(false);
       setAmountTendered('');
       setPartialPayments([]);
@@ -525,6 +560,16 @@ export default function POSPage() {
              </div>
           )}
 
+          {orderType === 'DELIVERY' && (
+            <div className="mb-4">
+              <DeliveryDetailsFields
+                variant="compact"
+                value={deliveryDetails}
+                onChange={setDeliveryDetails}
+              />
+            </div>
+          )}
+
           <div className="space-y-3 mb-6">
             <div className="flex justify-between text-2xl font-black text-slate-900 pt-4">
               <span className="tracking-tighter">TOTAL</span>
@@ -535,7 +580,11 @@ export default function POSPage() {
           <div className="grid gap-4">
              <Button 
                className="h-16 font-black text-sm uppercase tracking-widest premium-gradient shadow-lg shadow-indigo-100 border-none rounded-2xl w-full" 
-               disabled={cart.length === 0 || processingOrder}
+               disabled={
+                 cart.length === 0 ||
+                 processingOrder ||
+                 (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
+               }
                onClick={() => {
                  setPaymentMode('FULL');
                  setAmountTendered('');
@@ -591,13 +640,26 @@ export default function POSPage() {
           </div>
 
           <div className="bg-slate-50 p-4 border-t mt-auto">
+            {orderType === 'DELIVERY' && (
+              <div className="mb-4">
+                <DeliveryDetailsFields
+                  variant="compact"
+                  value={deliveryDetails}
+                  onChange={setDeliveryDetails}
+                />
+              </div>
+            )}
             <div className="flex justify-between text-xl font-black text-slate-900 mb-4">
               <span>TOTAL</span>
               <span className="text-primary">Rs. {subtotal.toFixed(0)}</span>
             </div>
             <Button 
               className="w-full h-14 font-black uppercase tracking-widest premium-gradient rounded-xl" 
-              disabled={cart.length === 0 || processingOrder}
+              disabled={
+                cart.length === 0 ||
+                processingOrder ||
+                (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
+              }
               onClick={() => {
                 setMobileCartOpen(false);
                 setPaymentMode('FULL');
@@ -636,6 +698,13 @@ export default function POSPage() {
                 <span className="font-bold text-slate-500 text-sm sm:text-base">Order Total</span>
                 <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {subtotal.toFixed(0)}</span>
              </div>
+
+             {orderType === 'DELIVERY' && (
+               <DeliveryDetailsFields
+                 value={deliveryDetails}
+                 onChange={setDeliveryDetails}
+               />
+             )}
 
              {paymentMode === 'FULL' && (
                <div className="space-y-3 sm:space-y-4">
@@ -871,9 +940,9 @@ export default function POSPage() {
                  <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full mb-3 print:hidden">
                     <ShoppingCart className="h-6 w-6 text-indigo-600" />
                  </div>
-                 <h2 className="text-xl font-black text-slate-900 tracking-tight">RestoOS</h2>
-                 <p className="text-xs text-slate-500 mt-1">123 Culinary Drive, Food City</p>
-                 <p className="text-xs text-slate-500">Tel: +92 300 1234567</p>
+                 <h2 className="text-xl font-black text-slate-900 tracking-tight">{BRAND.name}</h2>
+                 <p className="text-xs text-slate-500 mt-1">{VENUE.addressLines.join(', ')}</p>
+                 <p className="text-xs text-slate-500">Tel: {VENUE.phones[0]!.numbers[0]}</p>
               </div>
               
               <div className="bg-slate-50 rounded-lg p-3 mb-4 print:bg-white print:p-0">
@@ -896,6 +965,16 @@ export default function POSPage() {
                     </div>
                  </div>
               </div>
+
+              {orderSuccess?.delivery && (
+                <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs">
+                  <p className="mb-2 font-black uppercase tracking-wider text-indigo-800">Delivery</p>
+                  <p><span className="text-slate-500">Rider:</span> <span className="font-semibold text-slate-800">{orderSuccess.delivery.riderName}</span></p>
+                  <p className="mt-1"><span className="text-slate-500">Cell:</span> <span className="font-semibold text-slate-800">{orderSuccess.delivery.phone}</span></p>
+                  <p className="mt-1"><span className="text-slate-500">Address:</span> <span className="font-semibold text-slate-800">{orderSuccess.delivery.address}</span></p>
+                  <p className="mt-2 text-[10px] text-slate-500">Completed {orderSuccess.timestamp?.toLocaleString()}</p>
+                </div>
+              )}
 
               <div className="mb-4">
                  <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 pb-2 border-b border-slate-100">
@@ -985,9 +1064,9 @@ export default function POSPage() {
           <div id="print-receipt" className="hidden print:block bg-white" aria-hidden>
             <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '13px', color: 'black' }}>
               <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>RestoOS</div>
-                <div style={{ fontSize: '9px' }}>123 Culinary Drive, Food City</div>
-                <div style={{ fontSize: '9px' }}>Tel: +92 300 1234567</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{BRAND.name}</div>
+                <div style={{ fontSize: '9px' }}>{VENUE.addressLines.join(', ')}</div>
+                <div style={{ fontSize: '9px' }}>Tel: {VENUE.phones[0]!.numbers[0]}</div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '4px' }}>
@@ -998,6 +1077,15 @@ export default function POSPage() {
                 <span>Cashier: {orderSuccess?.cashier}</span>
                 <span>{orderSuccess?.orderType?.replace('_', ' ')}</span>
               </div>
+
+              {orderSuccess?.delivery && (
+                <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px', fontSize: '9px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>DELIVERY</div>
+                  <div>Rider: {orderSuccess.delivery.riderName}</div>
+                  <div>Cell: {orderSuccess.delivery.phone}</div>
+                  <div>Addr: {orderSuccess.delivery.address}</div>
+                </div>
+              )}
 
               <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '9px', marginBottom: '6px' }}>

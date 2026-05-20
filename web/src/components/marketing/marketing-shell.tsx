@@ -13,7 +13,7 @@ export function MarketingShell({ children }: MarketingShellProps) {
       <LuxuryBackground />
       <div className="relative z-10 flex min-h-screen flex-col">
         <LuxuryHeader />
-        <div className="flex-1">{children}</div>
+        <div className="relative flex-1">{children}</div>
         <LuxuryFooter />
       </div>
     </div>

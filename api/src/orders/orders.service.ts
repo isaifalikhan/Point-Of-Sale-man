@@ -26,6 +26,17 @@ export class OrdersService {
       throw new BadRequestException('One or more menu items are invalid or not available');
     }
 
+    if (dto.type === 'DELIVERY') {
+      const rider = dto.deliveryRiderName?.trim();
+      const phone = dto.deliveryPhone?.trim();
+      const address = dto.deliveryAddress?.trim();
+      if (!rider || !phone || !address) {
+        throw new BadRequestException(
+          'Delivery orders require rider name, customer cell number, and delivery address',
+        );
+      }
+    }
+
     // 3. Calculate total amount
     let totalAmount = 0;
     const orderItemsData = dto.items.map(itemDto => {
@@ -74,6 +85,11 @@ export class OrdersService {
         userId,
         tableId: dto.tableId && dto.tableId.length > 0 ? dto.tableId : undefined,
         branchId: dto.branchId,
+        deliveryRiderName:
+          dto.type === 'DELIVERY' ? dto.deliveryRiderName?.trim() : undefined,
+        deliveryPhone: dto.type === 'DELIVERY' ? dto.deliveryPhone?.trim() : undefined,
+        deliveryAddress:
+          dto.type === 'DELIVERY' ? dto.deliveryAddress?.trim() : undefined,
         items: {
           create: orderItemsData,
         },
@@ -148,7 +164,10 @@ export class OrdersService {
 
     return this.prisma.order.update({
       where: { id: orderId },
-      data: { status: dto.status },
+      data: {
+        status: dto.status,
+        ...(dto.status === 'COMPLETED' ? { completedAt: new Date() } : {}),
+      },
     });
   }
 

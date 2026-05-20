@@ -212,9 +212,9 @@ export function LuxuryHomeSections() {
   const testimonial = BRAND.testimonials[tIndex]!;
 
   return (
-    <main>
-      {/* Hero */}
-      <section ref={heroRef} className="relative min-h-[100dvh] overflow-hidden">
+    <main className="relative">
+      {/* Hero — ref target must sit in a positioned ancestor chain for useScroll */}
+      <section ref={heroRef} className="relative isolate min-h-[100dvh] overflow-hidden">
         <motion.div style={{ y: heroImgY }} className="absolute inset-0">
           <LuxuryFillImg
             src={HERO_IMAGE}

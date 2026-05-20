@@ -79,8 +79,11 @@ export default function LoginPage() {
         ) : null}
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="email"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Email
             </Label>
             <Input
@@ -91,10 +94,14 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@restaurant.com"
+              className="min-w-0"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="password"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Password
             </Label>
             <Input
@@ -105,6 +112,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
+              className="min-w-0"
             />
           </div>
         </div>

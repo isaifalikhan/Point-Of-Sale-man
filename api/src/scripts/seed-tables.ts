@@ -2,13 +2,15 @@ import { PrismaClient, TableStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+/** Rooftop: 4 seats each. Ground: mixed capacities to show 1–4 chair layouts */
+const GROUND_CAPACITIES = [2, 4, 4, 6] as const;
+
 async function main() {
   console.log('Seeding tables for Baba Jani Fast Food...');
 
-  // Get the main branch for Baba Jani
   const tenant = await prisma.tenant.findFirst({
     where: { name: 'Baba Jani Fast Food' },
-    include: { branches: true }
+    include: { branches: true },
   });
 
   if (!tenant || !tenant.branches || tenant.branches.length === 0) {
@@ -18,66 +20,53 @@ async function main() {
 
   const branchId = tenant.branches[0].id;
 
-  // Clear existing orders associated with tables to avoid constraint errors
   console.log('Clearing old table assignments...');
   await prisma.order.updateMany({
     where: { branchId, tableId: { not: null } },
-    data: { tableId: null }
+    data: { tableId: null },
   });
 
-  // Clear existing tables
   await prisma.table.deleteMany({ where: { branchId } });
 
-  console.log('Creating new tables...');
+  console.log('Creating 22 tables (Rooftop 1–18, Ground 1–4)...');
 
-  // Arrays to hold our create promises
-  const tablePromises: Promise<any>[] = [];
+  const tablePromises: Promise<unknown>[] = [];
 
-  // 1. Family Hall (10 tables)
-  for (let i = 1; i <= 10; i++) {
-    tablePromises.push(
-      prisma.table.create({
-        data: {
-          name: `Family Hall - Table ${i}`,
-          capacity: 4,
-          status: TableStatus.AVAILABLE,
-          branchId
-        }
-      })
-    );
-  }
-
-  // 2. General Hall (14 tables)
-  for (let i = 1; i <= 14; i++) {
-    tablePromises.push(
-      prisma.table.create({
-        data: {
-          name: `General Hall - Table ${i}`,
-          capacity: 2,
-          status: TableStatus.AVAILABLE,
-          branchId
-        }
-      })
-    );
-  }
-
-  // 3. Rooftop (15 tables)
-  for (let i = 1; i <= 15; i++) {
+  for (let i = 1; i <= 18; i++) {
     tablePromises.push(
       prisma.table.create({
         data: {
           name: `Rooftop - Table ${i}`,
           capacity: 4,
           status: TableStatus.AVAILABLE,
-          branchId
-        }
-      })
+          branchId,
+          x: 0,
+          y: 0,
+        },
+      }),
+    );
+  }
+
+  for (let i = 1; i <= 4; i++) {
+    tablePromises.push(
+      prisma.table.create({
+        data: {
+          name: `Ground Floor - Table ${i}`,
+          capacity: GROUND_CAPACITIES[i - 1] ?? 4,
+          status: TableStatus.AVAILABLE,
+          branchId,
+          x: 0,
+          y: 0,
+        },
+      }),
     );
   }
 
   await Promise.all(tablePromises);
 
-  console.log(`Successfully created 10 Family Hall tables, 14 General Hall tables, and 15 Rooftop tables!`);
+  console.log(
+    'Done: 18 Rooftop (4 seats) + 4 Ground Floor (2/4/4/6 seats) = 22 total.',
+  );
 }
 
 main()

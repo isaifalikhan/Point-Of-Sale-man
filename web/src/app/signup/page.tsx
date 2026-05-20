@@ -101,8 +101,11 @@ export default function SignupPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="businessName" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="businessName"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Business name
             </Label>
             <Input
@@ -111,11 +114,15 @@ export default function SignupPage() {
               value={formData.businessName}
               onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
               required
+              className="min-w-0"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="name"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Your name
             </Label>
             <Input
@@ -123,11 +130,15 @@ export default function SignupPage() {
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
+              className="min-w-0"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="email"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Email
             </Label>
             <Input
@@ -137,11 +148,15 @@ export default function SignupPage() {
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
+              className="min-w-0"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label
+              htmlFor="password"
+              className="block w-full shrink-0 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+            >
               Password
             </Label>
             <Input
@@ -153,6 +168,7 @@ export default function SignupPage() {
               required
               minLength={6}
               placeholder="At least 6 characters"
+              className="min-w-0"
             />
           </div>
         </div>

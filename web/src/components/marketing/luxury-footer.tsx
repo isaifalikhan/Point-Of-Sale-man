@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { Mail, Rss, Share2 } from "lucide-react";
+import { MessageCircle, Phone, Rss, Share2 } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { BRAND } from "@/config/brand";
+import { toTelHref, VENUE, whatsappHref } from "@/config/venue-public";
 import { LuxuryNewsletter } from "@/components/marketing/luxury-newsletter";
 
 const footerNav = {
   product: [
+    { label: "Food menu", href: "/menu" },
     { label: "Features", href: "/features" },
     { label: "Plans", href: "/#pricing" },
     { label: "Experience", href: "/#menu" },
@@ -32,6 +34,15 @@ export function LuxuryFooter() {
             <p className="mt-6 max-w-sm text-sm leading-relaxed text-[#B8B8B8]">{BRAND.shortDescription}</p>
             <div className="mt-8 flex gap-3">
               <a
+                href={whatsappHref()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex size-10 items-center justify-center rounded-full border border-white/[0.1] text-[#F5F5F5] transition-colors hover:border-[#D4A64F]/50 hover:text-[#E7C27D]"
+                aria-label={`WhatsApp ${VENUE.whatsappDisplay}`}
+              >
+                <MessageCircle className="size-4" />
+              </a>
+              <a
                 href="#"
                 className="flex size-10 items-center justify-center rounded-full border border-white/[0.1] text-[#F5F5F5] transition-colors hover:border-[#D4A64F]/50 hover:text-[#E7C27D]"
                 aria-label="Share"
@@ -39,11 +50,11 @@ export function LuxuryFooter() {
                 <Share2 className="size-4" />
               </a>
               <a
-                href="mailto:hello@restoos.com"
+                href={toTelHref(VENUE.phones[0]!.numbers[0]!)}
                 className="flex size-10 items-center justify-center rounded-full border border-white/[0.1] text-[#F5F5F5] transition-colors hover:border-[#D4A64F]/50 hover:text-[#E7C27D]"
-                aria-label="Email"
+                aria-label={`Call ${VENUE.phones[0]!.numbers[0]}`}
               >
-                <Mail className="size-4" />
+                <Phone className="size-4" />
               </a>
               <a
                 href="/contact"

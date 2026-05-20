@@ -47,8 +47,9 @@ export function AuthShell({ children, eyebrow, footer, showSignupCta = true }: A
         ) : null}
       </header>
 
-      <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl gap-10 px-4 pb-14 pt-6 md:grid-cols-[1.05fr_1fr] md:items-center md:px-8 lg:max-w-7xl">
-        <section className="hidden select-none md:block">
+      {/* minmax(0,…) + min-w-0 prevents grid blowout on 2-in-1 / md widths (promo column overlapping the form). */}
+      <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl grid-cols-1 gap-10 px-4 pb-14 pt-6 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] md:items-start md:px-8 lg:max-w-7xl">
+        <section className="hidden min-w-0 select-none md:block">
           <div className="glass-panel relative overflow-hidden rounded-3xl p-10 shadow-gloss-lg">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/55 via-transparent to-primary/15" />
             <div className="shine-overlay pointer-events-none" />
@@ -86,7 +87,7 @@ export function AuthShell({ children, eyebrow, footer, showSignupCta = true }: A
           </div>
         </section>
 
-        <section className="relative mx-auto w-full max-w-md md:mx-0">
+        <section className="relative isolate mx-auto w-full min-w-0 max-w-md md:mx-0">
           <div className="glass-panel glow-ring relative rounded-3xl p-px shadow-gloss-lg">
             <div className="rounded-[1.4rem] bg-card/80 p-6 shadow-inner-gloss backdrop-blur-2xl sm:p-8">
               {children}

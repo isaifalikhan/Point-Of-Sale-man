@@ -1,74 +1,81 @@
+import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MarketingShell } from '@/components/marketing/marketing-shell';
-import { 
+import {
   ArrowRight,
-  Mail,
-  MessageSquare,
-  Phone,
-  MapPin,
   Clock,
+  MapPin,
+  MessageCircle,
+  Phone,
   Send,
-  Headphones,
   BookOpen,
-  Users
+  Users,
 } from 'lucide-react';
+import { VENUE, toTelHref, whatsappHref } from '@/config/venue-public';
 
 export default function ContactPage() {
   const contactMethods = [
     {
-      icon: Mail,
-      title: 'Email us',
-      desc: 'For general inquiries and support',
-      value: 'hello@restoos.com',
-      action: 'mailto:hello@restoos.com',
+      icon: MessageCircle,
+      title: 'WhatsApp orders',
+      desc: 'Fastest way to order for delivery or pickup',
+      value: VENUE.whatsappDisplay,
+      action: whatsappHref(),
+      external: true,
     },
     {
       icon: Phone,
       title: 'Call us',
-      desc: 'Mon-Fri, 9am-6pm EST',
-      value: '+1 (555) 123-4567',
-      action: 'tel:+15551234567',
+      desc: VENUE.hours,
+      value: VENUE.phones.map((p) => `${p.label}: ${p.numbers.join(', ')}`).join(' · '),
+      action: toTelHref(VENUE.phones[0]!.numbers[0]!),
+      external: false,
     },
     {
-      icon: MessageSquare,
-      title: 'Live chat',
-      desc: 'Average response time: 2 min',
-      value: 'Start a conversation',
-      action: '#',
+      icon: MapPin,
+      title: 'Visit us',
+      desc: 'Awami Shopping Center, Haider Road',
+      value: VENUE.addressLines.join(', '),
+      action: 'https://maps.google.com/?q=' + encodeURIComponent(VENUE.addressLines.join(', ') + ', Oghi, Pakistan'),
+      external: true,
     },
   ];
 
-  const resources = [
+  const resources: {
+    icon: LucideIcon;
+    title: string;
+    desc: string;
+    href: string;
+    external?: boolean;
+  }[] = [
     {
       icon: BookOpen,
-      title: 'Help Center',
-      desc: 'Browse our knowledge base for tutorials, FAQs, and troubleshooting guides.',
-      link: '#',
+      title: 'Food menu',
+      desc: 'Pizzas, deals, broast, shawarma, Chinese, and sweets with current prices.',
+      href: '/menu',
     },
     {
       icon: Users,
-      title: 'Community',
-      desc: 'Join our community of restaurant owners sharing tips and best practices.',
-      link: '#',
+      title: 'Family dining',
+      desc: 'Dine in, takeaway, and home delivery — free Wi‑Fi in house.',
+      href: '/about',
     },
     {
-      icon: Headphones,
-      title: 'Schedule a Demo',
-      desc: 'See RestoOS in action with a personalized walkthrough from our team.',
-      link: '#',
+      icon: Phone,
+      title: 'Rider line',
+      desc: `Delivery: ${VENUE.phones[1]!.numbers.join(', ')}`,
+      href: toTelHref(VENUE.phones[1]!.numbers[0]!),
     },
   ];
 
   return (
     <MarketingShell>
       <main className="relative z-10">
-        {/* Hero Section */}
         <section className="mx-auto flex max-w-7xl flex-col items-center px-4 pb-12 pt-16 text-center md:px-8 md:pt-24">
           <span className="glass-panel relative mb-7 inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#E7C27D]">
-            <MessageSquare className="size-4" aria-hidden />
+            <MessageCircle className="size-4" aria-hidden />
             Get in touch
           </span>
           <h1 className="mx-auto max-w-4xl font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.08] tracking-tight text-[#F5F5F5] md:text-5xl lg:text-6xl">
@@ -76,11 +83,10 @@ export default function ContactPage() {
             <span className="lux-text-gradient">hear from you</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-            Have questions about RestoOS? Want to schedule a demo? Our team is here to help you find the perfect solution for your restaurant.
+            {VENUE.legalName} — {VENUE.hours.toLowerCase()}. WhatsApp your order or call for delivery across Oghi.
           </p>
         </section>
 
-        {/* Contact Methods */}
         <section className="py-12">
           <div className="mx-auto max-w-5xl px-6">
             <div className="grid gap-6 md:grid-cols-3">
@@ -88,6 +94,7 @@ export default function ContactPage() {
                 <a
                   key={i}
                   href={method.action}
+                  {...(method.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                   className="glass-panel group hover-scale relative overflow-hidden rounded-2xl p-6 text-center shadow-gloss-soft transition-all hover:shadow-gloss-lg"
                 >
                   <div className="shine-overlay pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-20" />
@@ -103,92 +110,83 @@ export default function ContactPage() {
           </div>
         </section>
 
-        {/* Main Content: Form + Info */}
         <section className="border-t border-white/20 bg-card/30 py-20 backdrop-blur-sm">
           <div className="mx-auto max-w-6xl px-6">
             <div className="grid gap-12 lg:grid-cols-2">
-              {/* Contact Form */}
               <div className="glass-panel relative overflow-hidden rounded-3xl p-8 shadow-gloss-lg md:p-10">
                 <div className="shine-overlay pointer-events-none absolute inset-0 opacity-15" />
                 <h2 className="font-heading text-2xl font-bold text-foreground">Send us a message</h2>
-                <p className="mt-2 text-muted-foreground">Fill out the form and we'll get back to you within 24 hours.</p>
-                
+                <p className="mt-2 text-muted-foreground">
+                  Prefer WhatsApp?{' '}
+                  <a href={whatsappHref()} className="font-medium text-primary underline-offset-4 hover:underline">
+                    Open chat
+                  </a>
+                  .
+                </p>
+
                 <form className="mt-8 space-y-6">
                   <div className="grid gap-6 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName" className="text-sm font-medium">First name</Label>
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <Label htmlFor="firstName" className="block text-sm font-medium">
+                        First name
+                      </Label>
                       <Input
                         id="firstName"
-                        placeholder="John"
-                        className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
+                        placeholder="First name"
+                        className="h-12 min-w-0 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName" className="text-sm font-medium">Last name</Label>
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <Label htmlFor="lastName" className="block text-sm font-medium">
+                        Last name
+                      </Label>
                       <Input
                         id="lastName"
-                        placeholder="Doe"
-                        className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
+                        placeholder="Last name"
+                        className="h-12 min-w-0 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                       />
                     </div>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label htmlFor="email" className="block text-sm font-medium">
+                      Phone or email
+                    </Label>
                     <Input
                       id="email"
-                      type="email"
-                      placeholder="john@restaurant.com"
-                      className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
+                      type="text"
+                      placeholder="03xx-xxxxxxx or you@email.com"
+                      className="h-12 min-w-0 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
                     />
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="restaurant" className="text-sm font-medium">Restaurant name</Label>
-                    <Input
-                      id="restaurant"
-                      placeholder="The Best Bistro"
-                      className="h-12 rounded-xl border-white/[0.1] bg-[#111111]/90 text-[#F5F5F5] shadow-none backdrop-blur-sm focus-visible:border-[#D4A64F]/50 focus-visible:ring-[#D4A64F]/25"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="subject" className="text-sm font-medium">Subject</Label>
-                    <select
-                      id="subject"
-                      className="flex h-12 w-full rounded-xl border border-white/[0.1] bg-[#111111]/90 px-4 text-sm text-[#F5F5F5] shadow-none backdrop-blur-sm transition-colors focus-visible:border-[#D4A64F]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A64F]/25"
-                    >
-                      <option value="">Select a topic...</option>
-                      <option value="sales">Sales inquiry</option>
-                      <option value="demo">Schedule a demo</option>
-                      <option value="support">Technical support</option>
-                      <option value="partnership">Partnership opportunity</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="message" className="text-sm font-medium">Message</Label>
+
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label htmlFor="message" className="block text-sm font-medium">
+                      Message
+                    </Label>
                     <textarea
                       id="message"
                       rows={5}
-                      placeholder="Tell us about your restaurant and how we can help..."
-                      className="flex w-full rounded-xl border border-white/[0.1] bg-[#111111]/90 px-4 py-3 text-sm text-[#F5F5F5] shadow-none backdrop-blur-sm transition-colors placeholder:text-muted-foreground focus-visible:border-[#D4A64F]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A64F]/25"
+                      placeholder="Tell us your order, party size, or question..."
+                      className="flex min-h-[120px] w-full min-w-0 rounded-xl border border-white/[0.1] bg-[#111111]/90 px-4 py-3 text-sm text-[#F5F5F5] shadow-none backdrop-blur-sm transition-colors placeholder:text-muted-foreground focus-visible:border-[#D4A64F]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A64F]/25"
                     />
                   </div>
-                  
-                  <Button type="submit" size="lg" className="lux-gold-gradient h-14 w-full rounded-xl border-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B]">
+
+                  <a
+                    href={whatsappHref()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-14 w-full items-center justify-center rounded-xl lux-gold-gradient text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0B0B0B] transition-opacity hover:opacity-95"
+                  >
                     <Send className="mr-2 h-5 w-5" />
-                    Send message
-                  </Button>
+                    Message on WhatsApp
+                  </a>
                 </form>
               </div>
 
-              {/* Info Panel */}
               <div className="space-y-8">
-                {/* Office Info */}
                 <div className="glass-panel relative overflow-hidden rounded-2xl p-8 shadow-gloss-soft">
-                  <h3 className="font-heading text-xl font-bold text-foreground">Our office</h3>
+                  <h3 className="font-heading text-xl font-bold text-foreground">Our restaurant</h3>
                   <div className="mt-6 space-y-4">
                     <div className="flex items-start gap-4">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -197,8 +195,12 @@ export default function ContactPage() {
                       <div>
                         <p className="font-medium text-foreground">Address</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          123 Innovation Drive, Suite 400<br />
-                          Austin, TX 78701, USA
+                          {VENUE.addressLines.map((line) => (
+                            <span key={line} className="block">
+                              {line}
+                            </span>
+                          ))}
+                          <span className="block">Oghi, Pakistan</span>
                         </p>
                       </div>
                     </div>
@@ -207,34 +209,41 @@ export default function ContactPage() {
                         <Clock className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="font-medium text-foreground">Business hours</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Monday - Friday: 9:00 AM - 6:00 PM EST<br />
-                          Weekend: Emergency support only
-                        </p>
+                        <p className="font-medium text-foreground">Hours</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{VENUE.hours}</p>
                       </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {VENUE.services.map((s) => (
+                        <span
+                          key={s}
+                          className="rounded-full border border-white/[0.1] bg-[#111111]/60 px-3 py-1 text-xs text-[#B8B8B8]"
+                        >
+                          {s}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Resources */}
                 <div>
-                  <h3 className="mb-4 font-heading text-xl font-bold text-foreground">Helpful resources</h3>
+                  <h3 className="mb-4 font-heading text-xl font-bold text-foreground">Helpful links</h3>
                   <div className="space-y-4">
-                    {resources.map((resource, i) => (
+                    {resources.map((resource) => (
                       <a
-                        key={i}
-                        href={resource.link}
+                        key={resource.title}
+                        href={resource.href}
+                        {...(resource.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                         className="glass-panel group flex items-start gap-4 rounded-2xl p-5 shadow-gloss-soft transition-all hover:shadow-gloss-lg"
                       >
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-indigo-500/10 text-primary shadow-inner-gloss ring-1 ring-white/40">
                           <resource.icon className="h-5 w-5" />
                         </div>
-                        <div className="flex-1">
+                        <div className="min-w-0 flex-1">
                           <h4 className="font-semibold text-foreground group-hover:text-primary">{resource.title}</h4>
                           <p className="mt-1 text-sm text-muted-foreground">{resource.desc}</p>
                         </div>
-                        <ArrowRight className="mt-1 h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                        <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
                       </a>
                     ))}
                   </div>
@@ -244,21 +253,32 @@ export default function ContactPage() {
           </div>
         </section>
 
-        {/* FAQ Teaser */}
         <section className="py-20">
           <div className="mx-auto max-w-4xl px-6 text-center">
             <h2 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Frequently asked questions
+              Quick answers
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Find quick answers to common questions about RestoOS.
+              Ordering, parking, and service at {VENUE.shortName}.
             </p>
             <div className="mt-10 grid gap-4 text-left md:grid-cols-2">
               {[
-                { q: 'How long is the free trial?', a: '14 days with full access to all features. No credit card required.' },
-                { q: 'Can I import my existing menu?', a: 'Yes! We support CSV import and can help migrate from most POS systems.' },
-                { q: 'What hardware do I need?', a: 'RestoOS works on any modern tablet, computer, or dedicated POS hardware.' },
-                { q: 'Is my data secure?', a: 'Absolutely. We use bank-level encryption and are SOC 2 compliant.' },
+                {
+                  q: 'How do I order delivery?',
+                  a: `WhatsApp ${VENUE.whatsappDisplay} with your address and cart — or call the rider line ${VENUE.phones[1]!.numbers[0]}.`,
+                },
+                {
+                  q: 'Do you have dine-in?',
+                  a: 'Yes — family dining hall on the first floor of Awami Shopping Center with free Wi‑Fi.',
+                },
+                {
+                  q: 'What are your hours?',
+                  a: VENUE.hours,
+                },
+                {
+                  q: 'Where do I see prices?',
+                  a: 'Browse the full food menu on this site — prices match our printed boards.',
+                },
               ].map((faq, i) => (
                 <div key={i} className="glass-panel rounded-2xl p-6 shadow-gloss-soft">
                   <h4 className="font-semibold text-foreground">{faq.q}</h4>
@@ -266,6 +286,12 @@ export default function ContactPage() {
                 </div>
               ))}
             </div>
+            <Link
+              href="/menu"
+              className="mt-10 inline-flex text-sm font-semibold text-[#E7C27D] underline-offset-4 hover:underline"
+            >
+              View full menu →
+            </Link>
           </div>
         </section>
       </main>

@@ -1,33 +1,59 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2, Edit2, CheckCircle2, XCircle, Grid, Play, Settings2, ArrowRight, ArrowUpRight } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Plus, Trash2, LayoutGrid, Users } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { ConfirmationModal } from '@/components/ui/confirmation-modal';
 import { apiClient } from '@/lib/api-client';
+import { FloorSection } from '@/components/tables/floor-section';
+import {
+  TABLE_FLOORS,
+  TOTAL_TABLES,
+  groupTablesByFloor,
+  floorForTable,
+  type TableRecord,
+  expectedTableName,
+} from '@/lib/table-floors';
+
+const TABLE_STATUSES = [
+  { value: 'AVAILABLE', label: 'Available' },
+  { value: 'OCCUPIED', label: 'Occupied' },
+  { value: 'BILL_PENDING', label: 'Bill pending' },
+  { value: 'RESERVED', label: 'Reserved' },
+] as const;
 
 export default function FloorPlanManagement() {
-  const [tables, setTables] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
+  const [tables, setTables] = useState<TableRecord[]>([]);
+  const [branches, setBranches] = useState<{ id: string; name?: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newTable, setNewTable] = useState({ name: '', capacity: 2, branchId: '' });
-  const [editingTable, setEditingTable] = useState<any>(null);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [editingTable, setEditingTable] = useState<TableRecord | null>(null);
+  const [savingTable, setSavingTable] = useState(false);
+  const [newTable, setNewTable] = useState({
+    name: '',
+    capacity: 4,
+    branchId: '',
+    floorIndex: 0 as 0 | 1,
+    tableNum: 1,
+  });
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [creatingTable, setCreatingTable] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; tableId: string | null }>({
+    isOpen: false,
+    tableId: null,
+  });
 
-  // New Confirmation States
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; tableId: string | null }>({ isOpen: false, tableId: null });
-  const [confirmAutoArrange, setConfirmAutoArrange] = useState(false);
-
-  // Drag State
-  const [draggedTableId, setDraggedTableId] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef({ x: 0, y: 0 });
+  const grouped = useMemo(() => groupTablesByFloor(tables), [tables]);
 
   useEffect(() => {
     fetchData();
@@ -37,12 +63,12 @@ export default function FloorPlanManagement() {
     try {
       const [tablesRes, branchesRes] = await Promise.all([
         apiClient.get('/tables'),
-        apiClient.get('/branches')
+        apiClient.get('/branches'),
       ]);
-      setTables(tablesRes.data.map((t: any) => ({ ...t, x: t.x || 0, y: t.y || 0 })));
+      setTables(tablesRes.data);
       setBranches(branchesRes.data);
       if (branchesRes.data.length > 0) {
-        setNewTable(prev => ({ ...prev, branchId: branchesRes.data[0].id }));
+        setNewTable((prev) => ({ ...prev, branchId: branchesRes.data[0].id }));
       }
     } catch (error) {
       console.error('Error fetching tables data:', error);
@@ -51,15 +77,38 @@ export default function FloorPlanManagement() {
     }
   };
 
+  const openTableEditor = (table: TableRecord) => {
+    setSelectedTableId(table.id);
+    setEditingTable({ ...table });
+  };
+
+  const closeTableEditor = () => {
+    setEditingTable(null);
+    setSelectedTableId(null);
+  };
+
   const handleCreateTable = async () => {
     setCreatingTable(true);
     try {
-      // Place new table in center roughly
-      const payload = { ...newTable, x: 200, y: 200 };
-      await apiClient.post('/tables', payload);
-      fetchData();
+      const floor = TABLE_FLOORS[newTable.floorIndex]!;
+      const name =
+        newTable.name.trim() || expectedTableName(floor, newTable.tableNum);
+      await apiClient.post('/tables', {
+        name,
+        capacity: newTable.capacity,
+        branchId: newTable.branchId,
+        x: 0,
+        y: 0,
+      });
+      await fetchData();
       setIsAddOpen(false);
-      setNewTable({ name: '', capacity: 2, branchId: branches[0]?.id || '' });
+      setNewTable({
+        name: '',
+        capacity: 4,
+        branchId: branches[0]?.id || '',
+        floorIndex: 0,
+        tableNum: 1,
+      });
     } catch (error) {
       console.error('Error creating table:', error);
     } finally {
@@ -67,350 +116,308 @@ export default function FloorPlanManagement() {
     }
   };
 
-  const toggleStatus = async (id: string, nextStatus: string) => {
-    try {
-      await apiClient.patch(`/tables/${id}/status`, { status: nextStatus });
-      setTables(tables.map(t => t.id === id ? { ...t, status: nextStatus } : t));
-    } catch (error) {
-      console.error('Error updating table status:', error);
-    }
-  };
-
-  const handleUpdateTable = async () => {
+  const handleSaveTable = async () => {
     if (!editingTable) return;
+    setSavingTable(true);
     try {
-      await apiClient.patch(`/tables/${editingTable.id}`, { name: editingTable.name, capacity: editingTable.capacity });
-      setTables(tables.map(t => t.id === editingTable.id ? { ...t, name: editingTable.name, capacity: editingTable.capacity } : t));
-      setEditingTable(null);
+      const existing = tables.find((t) => t.id === editingTable.id);
+      await apiClient.patch(`/tables/${editingTable.id}`, {
+        name: editingTable.name.trim(),
+        capacity: Math.max(1, editingTable.capacity),
+      });
+      if (existing && existing.status !== editingTable.status) {
+        await apiClient.patch(`/tables/${editingTable.id}/status`, {
+          status: editingTable.status,
+        });
+      }
+      const updated = {
+        ...editingTable,
+        name: editingTable.name.trim(),
+        capacity: Math.max(1, editingTable.capacity),
+      };
+      setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      closeTableEditor();
     } catch (error) {
       console.error('Error updating table:', error);
+    } finally {
+      setSavingTable(false);
     }
   };
 
   const handleDeleteTable = async (id: string) => {
     try {
       await apiClient.delete(`/tables/${id}`);
-      setTables(tables.filter(t => t.id !== id));
+      setTables((prev) => prev.filter((t) => t.id !== id));
+      closeTableEditor();
       setConfirmDelete({ isOpen: false, tableId: null });
     } catch (error) {
       console.error('Error deleting table:', error);
     }
   };
 
-  // Drag and Drop Handlers
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>, id: string) => {
-    e.stopPropagation();
-    if (e.button !== 0) return; // Only left click drag
-    
-    // Support touch layer properly
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    
-    const tableElement = e.currentTarget;
-    const rect = tableElement.getBoundingClientRect();
-    
-    offsetRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    
-    setDraggedTableId(id);
-  };
+  const editingFloor = editingTable
+    ? TABLE_FLOORS.find((f) => f.id === floorForTable(editingTable.name))?.title
+    : null;
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggedTableId || !containerRef.current) return;
-    
-    const containerRect = containerRef.current.getBoundingClientRect();
-    let newX = e.clientX - containerRect.left - offsetRef.current.x;
-    let newY = e.clientY - containerRect.top - offsetRef.current.y;
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-20">
+        <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+          Loading floor plan…
+        </p>
+      </div>
+    );
+  }
 
-    // Boundary constraints
-    newX = Math.max(0, Math.min(newX, containerRect.width - 100)); // assume table mostly ~100px wide
-    newY = Math.max(0, Math.min(newY, containerRect.height - 100));
-
-    setTables(prev => prev.map(t => t.id === draggedTableId ? { ...t, x: newX, y: newY } : t));
-  };
-
-  const handlePointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggedTableId) return;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-
-    const table = tables.find(t => t.id === draggedTableId);
-    setDraggedTableId(null);
-
-    if (table) {
-       try {
-         // Persist position quietly
-         await apiClient.patch(`/tables/${table.id}`, { x: table.x, y: table.y });
-       } catch (error) {
-         console.error("Failed to save coordinates", error);
-       }
-    }
-  };
-
-  const handleAutoArrange = async () => {
-    // Group and sort
-    const groups: { [key: string]: any[] } = {};
-    tables.forEach(table => {
-      let category = 'General';
-      if (table.name.includes('-')) {
-        category = table.name.split('-')[0].trim();
-      } else if (table.name.toLowerCase().includes('smoke')) {
-        category = 'Smoke';
-      }
-      if (!groups[category]) groups[category] = [];
-      groups[category].push(table);
-    });
-
-    const startX = 50;
-    const startY = 50;
-    const paddingX = 140;
-    const paddingY = 120;
-    const maxPerRow = 6;
-
-    let currentY = startY;
-    const updatedTables = [...tables];
-
-    for (const category of Object.keys(groups)) {
-      let currentX = startX;
-      let countInRow = 0;
-      const sortedInGroup = groups[category].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-      for (const table of sortedInGroup) {
-        const foundIndex = updatedTables.findIndex(t => t.id === table.id);
-        if (foundIndex !== -1) {
-          updatedTables[foundIndex] = { ...updatedTables[foundIndex], x: currentX, y: currentY };
-          // Save to backend quietly
-          apiClient.patch(`/tables/${table.id}`, { x: currentX, y: currentY }).catch(console.error);
-        }
-
-        currentX += paddingX;
-        countInRow++;
-        if (countInRow >= maxPerRow) {
-          currentX = startX;
-          currentY += paddingY;
-          countInRow = 0;
-        }
-      }
-      currentY += paddingY; 
-    }
-
-    setTables(updatedTables);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'AVAILABLE': return 'bg-emerald-100 border-emerald-500 text-emerald-900 shadow-emerald-200';
-      case 'OCCUPIED': return 'bg-amber-100 border-amber-500 text-amber-900 shadow-amber-200';
-      case 'BILL_PENDING': return 'bg-rose-100 border-rose-500 text-rose-900 shadow-rose-200';
-      case 'RESERVED': return 'bg-blue-100 border-blue-500 text-blue-900 shadow-blue-200';
-      default: return 'bg-slate-100 border-slate-500 text-slate-900';
-    }
-  };
-
-  const getCanvasItemClasses = (capacity: number) => {
-    if (capacity >= 4) {
-      return "w-32 h-20 rounded-xl px-2 py-4"; // Rectangle for larger tables
-    }
-    return "w-24 h-24 rounded-full flex flex-col justify-center items-center"; // Circle for small tables
-  };
-
-  if (loading) return <div className="h-full flex items-center justify-center p-20">Loading Floor Plan...</div>;
+  const occupied = tables.filter((t) => t.status === 'OCCUPIED').length;
+  const free = tables.filter((t) => t.status === 'AVAILABLE').length;
 
   return (
     <>
-      <div className="space-y-4 sm:space-y-6 max-w-[1600px] mx-auto flex flex-col pb-20">
-        {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100">
+      <div className="mx-auto max-w-[1600px] space-y-6 pb-16">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Floor Plan Manager</h1>
-            <p className="text-slate-500 text-[10px] sm:text-xs font-bold uppercase tracking-widest mt-1">Drag tables to adjust layout</p>
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-6 w-6 text-indigo-600" />
+              <h1 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+                Restaurant floor plan
+              </h1>
+            </div>
+            <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-500">
+              {TOTAL_TABLES} tables · Rooftop 1–18 · Ground 1–4
+            </p>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button 
-                variant="outline" 
-                onClick={() => setConfirmAutoArrange(true)}
-                className="font-bold tracking-wider uppercase text-[10px] sm:text-xs h-9 sm:h-10 px-3 sm:px-4 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm flex-1 sm:flex-none"
-            >
-                <Grid className="mr-1.5 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" /> Arrange
-            </Button>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">
+              <span className="size-2 rounded-full bg-emerald-500" /> {free} free
+            </span>
+            <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-amber-900">
+              <span className="size-2 rounded-full bg-amber-500" /> {occupied} occupied
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" /> {tables.length} total
+            </span>
+          </div>
 
-            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-              <DialogTrigger 
-                render={
-                  <Button className="font-bold tracking-wider uppercase text-[10px] sm:text-xs h-9 sm:h-10 px-4 sm:px-6 bg-indigo-600 hover:bg-indigo-700 shadow-md flex-1 sm:flex-none">
-                    <Plus className="mr-1.5 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" /> Add
-                  </Button>
-                }
-              />
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <DialogTrigger
+              render={
+                <Button className="h-10 bg-indigo-600 px-5 text-xs font-bold uppercase tracking-wider hover:bg-indigo-700">
+                  <Plus className="mr-2 h-4 w-4" /> Add table
+                </Button>
+              }
+            />
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl">Create New Table</DialogTitle>
+                <DialogTitle>Add table</DialogTitle>
               </DialogHeader>
-              <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+              <div className="space-y-4 py-2">
                 <div className="space-y-2">
-                  <Label className="text-xs sm:text-sm">Table Name / Number</Label>
-                  <Input 
-                    className="h-10 sm:h-9"
-                    placeholder="e.g. Table 5 or Window A1" 
+                  <Label>Floor</Label>
+                  <select
+                    className="flex h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                    value={newTable.floorIndex}
+                    onChange={(e) => {
+                      const floorIndex = Number(e.target.value) as 0 | 1;
+                      const floor = TABLE_FLOORS[floorIndex]!;
+                      setNewTable({
+                        ...newTable,
+                        floorIndex,
+                        tableNum: floor.tableRange[0],
+                        capacity: floor.defaultCapacity,
+                      });
+                    }}
+                  >
+                    {TABLE_FLOORS.map((f, i) => (
+                      <option key={f.id} value={i}>
+                        {f.title} ({f.tableRange[0]}–{f.tableRange[1]})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Table number</Label>
+                  <Input
+                    type="number"
+                    min={TABLE_FLOORS[newTable.floorIndex]!.tableRange[0]}
+                    max={TABLE_FLOORS[newTable.floorIndex]!.tableRange[1]}
+                    value={newTable.tableNum}
+                    onChange={(e) =>
+                      setNewTable({ ...newTable, tableNum: parseInt(e.target.value, 10) || 1 })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Custom name (optional)</Label>
+                  <Input
+                    placeholder={expectedTableName(
+                      TABLE_FLOORS[newTable.floorIndex]!,
+                      newTable.tableNum,
+                    )}
                     value={newTable.name}
                     onChange={(e) => setNewTable({ ...newTable, name: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs sm:text-sm">Capacity (Seating)</Label>
-                  <Input 
-                    type="number" 
-                    className="h-10 sm:h-9"
+                  <Label>Seats</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={12}
                     value={newTable.capacity}
-                    onChange={(e) => setNewTable({ ...newTable, capacity: parseInt(e.target.value) })}
+                    onChange={(e) =>
+                      setNewTable({ ...newTable, capacity: parseInt(e.target.value, 10) || 4 })
+                    }
                   />
-                  <p className="text-[10px] sm:text-xs text-slate-500 italic mt-1">Note: 1-3 seats = circle. 4+ seats = rectangle.</p>
                 </div>
-                <Button onClick={handleCreateTable} className="w-full h-11 sm:h-10 bg-indigo-600 text-sm" loading={creatingTable}>Drop Table to Canvas</Button>
+                <Button
+                  onClick={handleCreateTable}
+                  className="w-full bg-indigo-600"
+                  loading={creatingTable}
+                >
+                  Create table
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
-      </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-2 text-[10px] sm:text-xs">
-           <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-slate-500 uppercase tracking-widest"><div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-400"></div> Free</div>
-           <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-slate-500 uppercase tracking-widest"><div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-amber-400"></div> Occupied</div>
-           <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-slate-500 uppercase tracking-widest"><div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-rose-400"></div> Bill</div>
-           <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-slate-500 uppercase tracking-widest"><div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-400"></div> Reserved</div>
+        <div className="flex flex-wrap gap-4 px-1 text-[10px] font-bold uppercase tracking-widest text-slate-500 sm:text-xs">
+          <span className="flex items-center gap-2">
+            <span className="size-3 rounded-full bg-emerald-500" /> Available
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="size-3 rounded-full bg-amber-500" /> Occupied
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="size-3 rounded-full bg-rose-500" /> Bill pending
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="size-3 rounded-full bg-sky-500" /> Reserved
+          </span>
+          <span className="text-slate-400">Click a table to edit</span>
         </div>
 
-        {/* Canvas Area */}
-        <div 
-          className="bg-slate-50/50 rounded-2xl sm:rounded-3xl border-2 border-dashed border-slate-200 relative min-h-[500px] sm:min-h-[1000px] shadow-inner overflow-x-auto touch-pan-x"
-          ref={containerRef}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-        >
-           {/* Grid Pattern Background */}
-           <div className="absolute inset-0 pointer-events-none opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #94a3b8 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
-
-           {tables.map(table => (
-              <Popover key={table.id}>
-                <PopoverTrigger
-                  nativeButton={false}
-                  render={
-                    <div
-                      className={`absolute cursor-grab active:cursor-grabbing border-4 shadow-xl flex flex-col items-center justify-center transition-transform hover:scale-105 active:scale-95 ${getStatusColor(table.status)} ${getCanvasItemClasses(table.capacity)}`}
-                      style={{
-                        left: `${table.x}px`,
-                        top: `${table.y}px`,
-                        zIndex: draggedTableId === table.id ? 50 : 10,
-                      }}
-                      onPointerDown={(e) => handlePointerDown(e, table.id)}
-                    />
-                  }
-                >
-                  <span className="font-black text-lg tracking-tighter shadow-sm">
-                    {table.name.includes('-') ? table.name.split('-')[1].trim() : table.name}
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">
-                    👤 {table.capacity} Seats
-                  </span>
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-2 rounded-2xl shadow-2xl border-slate-100" side="top">
-                   <div className="p-2 border-b border-slate-100 mb-2">
-                      <h4 className="font-black text-slate-900">{table.name}</h4>
-                      <p className="text-xs text-slate-500 capitalize">{table.status.replace('_', ' ').toLowerCase()}</p>
-                   </div>
-                   <div className="flex flex-col gap-1">
-                      {table.status === 'AVAILABLE' ? (
-                         <Button variant="ghost" size="sm" className="justify-start font-bold text-slate-700" onClick={() => toggleStatus(table.id, 'OCCUPIED')}>
-                           <CheckCircle2 className="mr-2 h-4 w-4 text-amber-500" /> Walk-in (Occupy)
-                         </Button>
-                      ) : (
-                         <Button variant="ghost" size="sm" className="justify-start font-bold text-slate-700" onClick={() => toggleStatus(table.id, 'AVAILABLE')}>
-                           <XCircle className="mr-2 h-4 w-4 text-emerald-500" /> Mark Available
-                         </Button>
-                      )}
-                      
-                      {table.status !== 'BILL_PENDING' && table.status !== 'AVAILABLE' && (
-                        <Button variant="ghost" size="sm" className="justify-start font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={() => toggleStatus(table.id, 'BILL_PENDING')}>
-                          <Play className="mr-2 h-4 w-4" /> Request Bill
-                        </Button>
-                      )}
-
-                      <hr className="my-1 border-slate-50" />
-                      
-                      <Button variant="ghost" size="sm" className="justify-start font-bold text-slate-700" onClick={() => setEditingTable(table)}>
-                         <Settings2 className="mr-2 h-4 w-4 text-slate-400" /> Edit Capacity
-                      </Button>
-                      <Button variant="ghost" size="sm" className="justify-start font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={() => setConfirmDelete({ isOpen: true, tableId: table.id })}>
-                         <Trash2 className="mr-2 h-4 w-4" /> Remove Table
-                      </Button>
-                   </div>
-                </PopoverContent>
-              </Popover>
-           ))}
-
-           {tables.length === 0 && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300">
-                <Grid className="h-16 w-16 mb-4 opacity-20" />
-                <p className="font-bold text-xl">The floor is empty.</p>
-                <p className="text-sm">Add a table using the toolbar above to begin.</p>
-              </div>
-           )}
+        <div className="space-y-10">
+          {TABLE_FLOORS.map((floor) => (
+            <FloorSection
+              key={floor.id}
+              floor={floor}
+              tables={grouped[floor.id]}
+              selectedId={selectedTableId}
+              onSelectTable={openTableEditor}
+            />
+          ))}
         </div>
+
+        {tables.length < TOTAL_TABLES && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+            Expected {TOTAL_TABLES} tables; found {tables.length}. Run{' '}
+            <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs">
+              api/src/scripts/seed-tables.ts
+            </code>{' '}
+            to seed Rooftop 1–18 and Ground 1–4.
+          </p>
+        )}
       </div>
 
-      <Dialog open={!!editingTable} onOpenChange={(open) => !open && setEditingTable(null)}>
+      <Dialog
+        open={!!editingTable}
+        onOpenChange={(open) => {
+          if (!open) closeTableEditor();
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg sm:text-xl">Edit Table Configuration</DialogTitle>
+            <DialogTitle>Edit table</DialogTitle>
+            <DialogDescription>
+              {editingFloor ? `${editingFloor} · ` : ''}
+              Update name, seats, or status. Chair icons update when you change seats.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
-            <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Table Name / Number</Label>
-              <Input 
-                className="h-10 sm:h-9"
-                value={editingTable?.name || ''}
-                onChange={(e) => setEditingTable({ ...editingTable, name: e.target.value })}
-              />
+          {editingTable ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-table-name">Table name</Label>
+                <Input
+                  id="edit-table-name"
+                  value={editingTable.name}
+                  onChange={(e) =>
+                    setEditingTable({ ...editingTable, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-table-seats">Seats</Label>
+                <Input
+                  id="edit-table-seats"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={editingTable.capacity}
+                  onChange={(e) =>
+                    setEditingTable({
+                      ...editingTable,
+                      capacity: Math.max(1, parseInt(e.target.value, 10) || 1),
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  1 seat shows 1 chair, 2 seats show 2 chairs, and so on.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-table-status">Status</Label>
+                <select
+                  id="edit-table-status"
+                  className="flex h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  value={editingTable.status}
+                  onChange={(e) =>
+                    setEditingTable({ ...editingTable, status: e.target.value })
+                  }
+                >
+                  {TABLE_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-2 pt-2 sm:flex-row">
+                <Button
+                  onClick={handleSaveTable}
+                  className="flex-1 bg-indigo-600"
+                  loading={savingTable}
+                >
+                  Save changes
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 border-rose-200 text-rose-600 hover:bg-rose-50"
+                  onClick={() =>
+                    setConfirmDelete({ isOpen: true, tableId: editingTable.id })
+                  }
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Capacity (Seating)</Label>
-              <Input 
-                type="number" 
-                className="h-10 sm:h-9"
-                value={editingTable?.capacity || 2}
-                onChange={(e) => setEditingTable({ ...editingTable, capacity: parseInt(e.target.value) })}
-              />
-            </div>
-            <Button onClick={handleUpdateTable} className="w-full h-11 sm:h-10 bg-indigo-600 text-sm">Save Changes</Button>
-          </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
-      <ConfirmationModal 
-          isOpen={confirmDelete.isOpen}
-          onOpenChange={(open) => setConfirmDelete({ ...confirmDelete, isOpen: open })}
-          title="Delete Table?"
-          description="This action cannot be undone. All layout data for this table will be removed."
-          confirmText="Yes, Delete Table"
-          type="danger"
-          onConfirm={() => confirmDelete.tableId && handleDeleteTable(confirmDelete.tableId)}
-        />
-
-        <ConfirmationModal 
-          isOpen={confirmAutoArrange}
-          onOpenChange={setConfirmAutoArrange}
-          title="Auto-Arrange Layout?"
-          description="This will instantly organize all 40+ tables into neat rows by category. Do you want to continue?"
-          confirmText="Magic Arrange"
-          type="warning"
-          onConfirm={() => {
-            setConfirmAutoArrange(false);
-            handleAutoArrange();
-          }}
-        />
+      <ConfirmationModal
+        isOpen={confirmDelete.isOpen}
+        onOpenChange={(open) => setConfirmDelete({ ...confirmDelete, isOpen: open })}
+        title="Delete table?"
+        description="This removes the table from the floor plan."
+        confirmText="Delete"
+        type="danger"
+        onConfirm={() => confirmDelete.tableId && handleDeleteTable(confirmDelete.tableId)}
+      />
     </>
   );
 }

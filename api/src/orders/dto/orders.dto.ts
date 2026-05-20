@@ -62,6 +62,18 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderPaymentDto)
   payments?: CreateOrderPaymentDto[];
+
+  @IsOptional()
+  @IsString()
+  deliveryRiderName?: string;
+
+  @IsOptional()
+  @IsString()
+  deliveryPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  deliveryAddress?: string;
 }
 
 
