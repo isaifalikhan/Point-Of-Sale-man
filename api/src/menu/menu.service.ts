@@ -72,5 +72,23 @@ export class MenuService {
       where: { id },
     });
   }
+
+  async getPublicMenu(tenantName = 'Baba Jani Fast Food') {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { name: tenantName },
+    });
+    if (!tenant) return [];
+
+    return this.prisma.menuCategory.findMany({
+      where: { tenantId: tenant.id },
+      include: {
+        items: {
+          where: { isAvailable: true },
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
 }
 

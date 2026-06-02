@@ -30,7 +30,6 @@ export const OptimizedImage = memo(function OptimizedImage({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  const isExternal = src?.startsWith('http') && !src.includes('localhost');
   const isDataUrl = src?.startsWith('data:');
 
   if (hasError || !src) {
@@ -50,7 +49,9 @@ export const OptimizedImage = memo(function OptimizedImage({
         height={!fill ? height : undefined}
         sizes={sizes}
         priority={priority}
-        unoptimized={isExternal || isDataUrl}
+        // Let Next.js optimize/cache remote images (unsplash, etc.) for faster repeated loads.
+        // Keep data URLs unoptimized since they are already embedded payloads.
+        unoptimized={isDataUrl}
         className={cn(
           className,
           isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'
