@@ -21,7 +21,6 @@ import { VENUE } from '@/config/venue-public';
 
 const EMPTY_DELIVERY: DeliveryDetails = { riderName: '', phone: '', address: '' };
 type PaymentMethod = 'CASH' | 'CARD' | 'WALLET' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
-type ApiPaymentMethod = 'CASH' | 'CARD' | 'WALLET';
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'CASH', label: 'Cash' },
   { value: 'CARD', label: 'Card' },
@@ -30,12 +29,6 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'JAZZCASH', label: 'JazzCash' },
   { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
 ];
-
-const toApiPaymentMethod = (method: PaymentMethod): ApiPaymentMethod => {
-  if (method === 'EASYPAISA' || method === 'JAZZCASH') return 'WALLET';
-  if (method === 'BANK_TRANSFER') return 'CARD';
-  return method;
-};
 
 interface MenuItem {
   id: string;
@@ -54,6 +47,18 @@ interface CartItem {
   addonNames?: string[];
   totalPrice: number;
 }
+
+interface ActiveKitchenOrder {
+  id: string;
+  orderNumber: string;
+  status: string;
+  totalAmount: number;
+  type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
+  table?: { name?: string } | null;
+}
+
+const getOrderPaidAmount = (order: any): number =>
+  (order?.payments || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -171,6 +176,9 @@ export default function POSPage() {
   const [processingOrder, setProcessingOrder] = useState(false);
 
   const [orderSuccess, setOrderSuccess] = useState<any>(null);
+  const [kitchenTicket, setKitchenTicket] = useState<any>(null);
+  const [activeKitchenOrder, setActiveKitchenOrder] = useState<ActiveKitchenOrder | null>(null);
+  const [checkoutAutoOpened, setCheckoutAutoOpened] = useState(false);
   
   const [tables, setTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
@@ -224,18 +232,92 @@ export default function POSPage() {
     }
   }, [orderSuccess]);
 
+  useEffect(() => {
+    if (!kitchenTicket) return;
+    const printTimer = setTimeout(() => {
+      window.print();
+    }, 500);
+    return () => clearTimeout(printTimer);
+  }, [kitchenTicket]);
+
+  useEffect(() => {
+    if (!activeKitchenOrder) return;
+
+    const poll = async () => {
+      try {
+        const res = await apiClient.get('/orders');
+        const fresh = res.data.find((o: any) => o.id === activeKitchenOrder.id);
+        if (fresh) {
+          setActiveKitchenOrder({
+            id: fresh.id,
+            orderNumber: fresh.orderNumber,
+            status: fresh.status,
+            totalAmount: fresh.totalAmount,
+            type: fresh.type,
+            table: fresh.table,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to poll kitchen order status:', error);
+      }
+    };
+
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [activeKitchenOrder?.id]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!activeKitchenOrder) return;
+    if (activeKitchenOrder.status !== 'COMPLETED') return;
+    if (checkoutAutoOpened) return;
+
+    setCheckoutAutoOpened(true);
+    setPaymentMode('FULL');
+    setAmountTendered('');
+    setIsPaymentModalOpen(true);
+  }, [activeKitchenOrder, checkoutAutoOpened]);
+
   const fetchData = async () => {
     try {
-      const [catsRes, itemsRes, branchesRes, tablesRes] = await Promise.all([
+      const [catsRes, itemsRes, branchesRes, tablesRes, ordersRes] = await Promise.all([
         apiClient.get('/menu/categories'),
         apiClient.get('/menu/items'),
         apiClient.get('/branches'),
-        apiClient.get('/tables')
+        apiClient.get('/tables'),
+        apiClient.get('/orders'),
       ]);
       setCategories(catsRes.data);
       setItems(itemsRes.data);
       setBranches(branchesRes.data);
       setTables(tablesRes.data);
+
+      // Recover latest unpaid kitchen order so checkout survives refresh/navigation.
+      const unpaidOrders = (ordersRes.data || []).filter((o: any) => {
+        if (o.status === 'CANCELLED') return false;
+        return getOrderPaidAmount(o) < (o.totalAmount || 0);
+      });
+
+      if (unpaidOrders.length > 0) {
+        const latest = unpaidOrders[0];
+        setActiveKitchenOrder((prev) => {
+          if (prev && prev.id === latest.id && prev.status === latest.status) return prev;
+          return {
+            id: latest.id,
+            orderNumber: latest.orderNumber,
+            status: latest.status,
+            totalAmount: latest.totalAmount,
+            type: latest.type,
+            table: latest.table,
+          };
+        });
+      }
     } catch (error) {
 
       console.error('Error fetching data:', error);
@@ -284,23 +366,30 @@ export default function POSPage() {
     }
   }, [addToCart]);
 
-  const finalizeOrder = async (paymentsArray: {amount: number, method: PaymentMethod}[]) => {
+  const sendToKitchen = async () => {
     if (cart.length === 0 || branches.length === 0) return;
+
+    if (orderType === 'DINE_IN' && !selectedTableId) {
+      alert('Please select a table first.');
+      return;
+    }
 
     if (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails)) {
       alert('Please enter rider name, customer cell number, and delivery address.');
       return;
     }
-    
+
     setProcessingOrder(true);
     try {
-      await apiClient.post('/orders', {
+      const created = await apiClient.post('/orders', {
         type: orderType,
         branchId: branches[0].id,
         tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
-        payments: paymentsArray.map((p) => ({
-          amount: p.amount,
-          method: toApiPaymentMethod(p.method),
+        items: cart.map(c => ({
+          itemId: c.item.id,
+          quantity: c.quantity,
+          variantName: c.variantName,
+          addonNames: c.addonNames,
         })),
         ...(orderType === 'DELIVERY'
           ? {
@@ -309,20 +398,26 @@ export default function POSPage() {
               deliveryAddress: deliveryDetails.address.trim(),
             }
           : {}),
-        items: cart.map(c => ({
-          itemId: c.item.id,
-          quantity: c.quantity,
-          variantName: c.variantName,
-          addonNames: c.addonNames,
-        }))
       });
-      
-      const orderSnapshot = {
-        cart: [...cart],
-        subtotal,
+
+      setActiveKitchenOrder({
+        id: created.data.id,
+        orderNumber: created.data.orderNumber,
+        status: created.data.status,
+        totalAmount: created.data.totalAmount,
+        type: created.data.type,
+        table: created.data.table,
+      });
+      setCheckoutAutoOpened(false);
+
+      setKitchenTicket({
+        orderNumber: created.data.orderNumber,
         orderType,
-        payments: paymentsArray,
-        cashier: posUser || 'Staff',
+        tableName:
+          orderType === 'DINE_IN'
+            ? (tables.find((t) => t.id === selectedTableId)?.name || 'N/A')
+            : 'N/A',
+        cart: [...cart],
         timestamp: new Date(),
         delivery:
           orderType === 'DELIVERY'
@@ -332,23 +427,67 @@ export default function POSPage() {
                 address: deliveryDetails.address.trim(),
               }
             : null,
-      };
-      
-      setOrderSuccess(orderSnapshot);
+      });
+
       setCart([]);
       setSelectedTableId('');
       setDeliveryDetails(EMPTY_DELIVERY);
+    } catch (error) {
+      console.error('Kitchen ticket failed:', error);
+      alert('Failed to send order to kitchen.');
+    } finally {
+      setProcessingOrder(false);
+    }
+  };
+
+  const finalizeOrder = async (paymentsArray: {amount: number, method: PaymentMethod}[]) => {
+    if (!activeKitchenOrder) return;
+
+    setProcessingOrder(true);
+    try {
+      const paid = await apiClient.patch(`/orders/${activeKitchenOrder.id}/checkout`, {
+        payments: paymentsArray,
+      });
+
+      const orderSnapshot = {
+        cart: (paid.data.items || []).map((it: any) => ({
+          item: {
+            id: it.item?.id,
+            name: it.item?.name || 'Item',
+            image: it.item?.image,
+          },
+          quantity: it.quantity,
+          variantName: it.variantName,
+          addonNames: it.addonNames || [],
+          totalPrice: it.price,
+        })),
+        subtotal: paid.data.totalAmount,
+        orderType: paid.data.type,
+        payments: paid.data.payments || paymentsArray,
+        cashier: posUser || 'Staff',
+        timestamp: new Date(),
+        delivery:
+          paid.data.type === 'DELIVERY'
+            ? {
+                riderName: paid.data.deliveryRiderName || '',
+                phone: paid.data.deliveryPhone || '',
+                address: paid.data.deliveryAddress || '',
+              }
+            : null,
+      };
+
+      setOrderSuccess(orderSnapshot);
+      setActiveKitchenOrder(null);
+      setCheckoutAutoOpened(false);
       setIsPaymentModalOpen(false);
       setAmountTendered('');
       setPartialPayments([]);
-      
+
       const tablesRes = await apiClient.get('/tables');
       setTables(tablesRes.data);
-
-
-    } catch (error) {
+    } catch (error: any) {
       console.error('Checkout failed:', error);
-      alert('Order failed. Please check backend logic.');
+      alert(error?.response?.data?.message || 'Checkout failed.');
     } finally {
       setProcessingOrder(false);
     }
@@ -372,6 +511,7 @@ export default function POSPage() {
     cart.reduce((sum, p) => sum + (p.totalPrice * p.quantity), 0), 
     [cart]
   );
+  const payableTotal = activeKitchenOrder?.totalAmount ?? subtotal;
 
   const availableTables = useMemo(() => 
     tables.filter(t => t.status === 'AVAILABLE'), 
@@ -595,17 +735,50 @@ export default function POSPage() {
           <div className="space-y-3 mb-6">
             <div className="flex justify-between text-2xl font-black text-slate-900 pt-4">
               <span className="tracking-tighter">TOTAL</span>
-              <span className="text-primary truncate ml-2">Rs. {subtotal.toFixed(0)}</span>
+              <span className="text-primary truncate ml-2">
+                Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}
+              </span>
             </div>
           </div>
 
           <div className="grid gap-4">
+             {activeKitchenOrder && (
+               <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                 <p className="font-black uppercase tracking-widest text-slate-500">Kitchen Ticket</p>
+                 <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">
+                   Waiting for #{activeKitchenOrder.orderNumber}
+                 </p>
+                 <p className="mt-1 font-semibold text-slate-800">
+                   #{activeKitchenOrder.orderNumber} - {activeKitchenOrder.status === 'COMPLETED' ? 'Order Completed' : activeKitchenOrder.status}
+                 </p>
+                 <p className="mt-1 text-slate-500">
+                   {activeKitchenOrder.type === 'DINE_IN'
+                     ? `Table: ${activeKitchenOrder.table?.name || 'N/A'}`
+                     : activeKitchenOrder.type === 'DELIVERY'
+                       ? 'Delivery order'
+                       : 'Takeaway order'}
+                 </p>
+               </div>
+             )}
+             {!activeKitchenOrder ? (
+               <Button
+                 className="h-16 font-black text-sm uppercase tracking-widest bg-amber-600 hover:bg-amber-700 shadow-lg border-none rounded-2xl w-full"
+                 disabled={
+                   cart.length === 0 ||
+                   processingOrder ||
+                   (orderType === 'DINE_IN' && !selectedTableId) ||
+                   (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
+                 }
+                 onClick={sendToKitchen}
+               >
+                 {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send to Kitchen'}
+               </Button>
+             ) : (
              <Button 
                className="h-16 font-black text-sm uppercase tracking-widest premium-gradient shadow-lg shadow-indigo-100 border-none rounded-2xl w-full" 
                disabled={
-                 cart.length === 0 ||
                  processingOrder ||
-                 (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
+                 activeKitchenOrder.status !== 'COMPLETED'
                }
                onClick={() => {
                  setPaymentMode('FULL');
@@ -613,8 +786,11 @@ export default function POSPage() {
                  setIsPaymentModalOpen(true);
                }}
              >
-               {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : <><CreditCard className="mr-2 h-5 w-5" /> Proceed to Payment</>}
+               {activeKitchenOrder.status === 'COMPLETED'
+                 ? 'Order Completed - Proceed to Checkout'
+                 : `Waiting for Kitchen (${activeKitchenOrder.status})`}
              </Button>
+             )}
           </div>
         </div>
       </div>
@@ -673,24 +849,40 @@ export default function POSPage() {
             )}
             <div className="flex justify-between text-xl font-black text-slate-900 mb-4">
               <span>TOTAL</span>
-              <span className="text-primary">Rs. {subtotal.toFixed(0)}</span>
+              <span className="text-primary">Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}</span>
             </div>
-            <Button 
-              className="w-full h-14 font-black uppercase tracking-widest premium-gradient rounded-xl" 
-              disabled={
-                cart.length === 0 ||
-                processingOrder ||
-                (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
-              }
-              onClick={() => {
-                setMobileCartOpen(false);
-                setPaymentMode('FULL');
-                setAmountTendered('');
-                setIsPaymentModalOpen(true);
-              }}
-            >
-              {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Proceed to Payment'}
-            </Button>
+            {!activeKitchenOrder ? (
+              <Button
+                className="w-full h-14 font-black uppercase tracking-widest bg-amber-600 hover:bg-amber-700 rounded-xl"
+                disabled={
+                  cart.length === 0 ||
+                  processingOrder ||
+                  (orderType === 'DINE_IN' && !selectedTableId) ||
+                  (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
+                }
+                onClick={async () => {
+                  setMobileCartOpen(false);
+                  await sendToKitchen();
+                }}
+              >
+                {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send to Kitchen'}
+              </Button>
+            ) : (
+              <Button
+                className="w-full h-14 font-black uppercase tracking-widest premium-gradient rounded-xl"
+                disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+                onClick={() => {
+                  setMobileCartOpen(false);
+                  setPaymentMode('FULL');
+                  setAmountTendered('');
+                  setIsPaymentModalOpen(true);
+                }}
+              >
+                {activeKitchenOrder.status === 'COMPLETED'
+                  ? 'Order Completed - Proceed to Checkout'
+                  : `Waiting for Kitchen (${activeKitchenOrder.status})`}
+              </Button>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -718,7 +910,7 @@ export default function POSPage() {
 
              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 flex justify-between items-center">
                 <span className="font-bold text-slate-500 text-sm sm:text-base">Order Total</span>
-                <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {subtotal.toFixed(0)}</span>
+                <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {payableTotal.toFixed(0)}</span>
              </div>
 
              {orderType === 'DELIVERY' && (
@@ -750,23 +942,23 @@ export default function POSPage() {
                       </option>
                     ))}
                   </select>
-                   {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < subtotal && (
+                   {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < payableTotal && (
                      <div className="flex items-center gap-2 text-xs sm:text-sm p-2.5 sm:p-3 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-200">
                         <span className="text-rose-500">⚠</span>
-                        <span>Insufficient! Need Rs. {(subtotal - parseFloat(amountTendered)).toFixed(0)} more</span>
+                        <span>Insufficient! Need Rs. {(payableTotal - parseFloat(amountTendered)).toFixed(0)} more</span>
                      </div>
                    )}
-                   {parseFloat(amountTendered) >= subtotal && (
+                   {parseFloat(amountTendered) >= payableTotal && (
                      <div className="flex justify-between items-center text-xs sm:text-sm p-2.5 sm:p-3 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100">
                         <span>Change Due:</span>
-                        <span className="text-lg sm:text-xl">Rs. {(parseFloat(amountTendered) - subtotal).toFixed(0)}</span>
+                        <span className="text-lg sm:text-xl">Rs. {(parseFloat(amountTendered) - payableTotal).toFixed(0)}</span>
                      </div>
                    )}
                  </div>
                  <Button 
                    className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 text-sm sm:text-base"
-                   disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < subtotal}
-                  onClick={() => finalizeOrder([{ amount: subtotal, method: fullPaymentMethod }])}
+                   disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < payableTotal}
+                  onClick={() => finalizeOrder([{ amount: payableTotal, method: fullPaymentMethod }])}
                  >
                    {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Complete Payment'}
                  </Button>
@@ -785,7 +977,7 @@ export default function POSPage() {
                   </div>
                   <div className="p-3 sm:p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
                      <span className="font-bold text-indigo-700 text-sm sm:text-base">Per Person</span>
-                     <span className="text-xl sm:text-2xl font-black text-indigo-900">Rs. {(subtotal / splitCount).toFixed(0)}</span>
+                     <span className="text-xl sm:text-2xl font-black text-indigo-900">Rs. {(payableTotal / splitCount).toFixed(0)}</span>
                   </div>
                  <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment Method</label>
@@ -805,7 +997,7 @@ export default function POSPage() {
                     className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-2 sm:mt-4 text-sm sm:text-base"
                     disabled={processingOrder}
                     onClick={() => {
-                      const splitVal = subtotal / splitCount;
+                      const splitVal = payableTotal / splitCount;
                       const payments = Array(splitCount).fill({ amount: splitVal, method: splitPaymentMethod });
                       finalizeOrder(payments);
                     }}
@@ -881,14 +1073,14 @@ export default function POSPage() {
                       ))}
                       <div className="flex justify-between p-2 text-xs sm:text-sm font-black text-rose-600">
                          <span>Remaining Balance</span>
-                         <span>Rs. {Math.max(0, subtotal - partialPayments.reduce((s, p) => s + p.amount, 0)).toFixed(0)}</span>
+                         <span>Rs. {Math.max(0, payableTotal - partialPayments.reduce((s, p) => s + p.amount, 0)).toFixed(0)}</span>
                       </div>
                     </div>
                   )}
 
                   <Button 
                     className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-2 sm:mt-4 text-sm sm:text-base"
-                    disabled={processingOrder || partialPayments.reduce((s, p) => s + p.amount, 0) < subtotal}
+                    disabled={processingOrder || partialPayments.reduce((s, p) => s + p.amount, 0) < payableTotal}
                     onClick={() => finalizeOrder(partialPayments)}
                   >
                     {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Complete Order'}
@@ -966,6 +1158,49 @@ export default function POSPage() {
                 ).toFixed(0)}
              </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kitchen Ticket Modal */}
+      <Dialog open={!!kitchenTicket} onOpenChange={(open) => !open && setKitchenTicket(null)}>
+        <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
+          <div className="bg-amber-600 p-4 sm:p-6 text-white">
+            <h2 className="text-lg sm:text-xl font-black">Kitchen Ticket Sent</h2>
+            <p className="text-amber-100 text-xs sm:text-sm">Print this slip for kitchen staff</p>
+          </div>
+          <div className="p-4 sm:p-6 text-sm space-y-2">
+            <p><span className="font-semibold">Order:</span> #{kitchenTicket?.orderNumber}</p>
+            <p><span className="font-semibold">Type:</span> {kitchenTicket?.orderType?.replace('_', ' ')}</p>
+            {kitchenTicket?.orderType === 'DINE_IN' && (
+              <p><span className="font-semibold">Table:</span> {kitchenTicket?.tableName}</p>
+            )}
+            {kitchenTicket?.delivery && (
+              <p><span className="font-semibold">Rider:</span> {kitchenTicket.delivery.riderName}</p>
+            )}
+            <div className="border-t pt-2 mt-2 space-y-1">
+              {kitchenTicket?.cart?.map((c: any, i: number) => (
+                <p key={i}>
+                  {c.quantity}x {c.item.name}
+                  {c.variantName ? ` (${c.variantName})` : ''}
+                </p>
+              ))}
+            </div>
+          </div>
+          <div className="p-3 sm:p-4 bg-slate-50 border-t flex gap-2 sm:gap-3">
+            <Button
+              className="flex-1 h-11 sm:h-12 bg-amber-600 hover:bg-amber-700 font-bold text-white rounded-xl text-sm sm:text-base"
+              onClick={() => window.print()}
+            >
+              <Printer className="mr-2 h-4 w-4" /> Print Ticket
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 sm:h-12 px-4 sm:px-6 font-bold rounded-xl text-sm sm:text-base"
+              onClick={() => setKitchenTicket(null)}
+            >
+              Done
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1107,6 +1342,31 @@ export default function POSPage() {
       </Dialog>
 
       {/* Print-only receipt: portaled to body so @media print can hide all other body children without layout from the dashboard (fixes blank first page). */}
+      {printPortalReady &&
+        kitchenTicket &&
+        createPortal(
+          <div id="print-kitchen" className="hidden print:block bg-white" aria-hidden>
+            <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '13px', color: 'black' }}>
+              <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>KITCHEN TICKET</div>
+                <div style={{ fontSize: '12px', fontWeight: 'bold' }}>#{kitchenTicket.orderNumber}</div>
+              </div>
+              <div style={{ fontSize: '10px', marginBottom: '8px' }}>
+                <div>Type: {kitchenTicket.orderType?.replace('_', ' ')}</div>
+                {kitchenTicket.orderType === 'DINE_IN' && <div>Table: {kitchenTicket.tableName}</div>}
+                {kitchenTicket.delivery && <div>Rider: {kitchenTicket.delivery.riderName}</div>}
+              </div>
+              <div style={{ borderTop: '1px dashed black', paddingTop: '8px' }}>
+                {kitchenTicket.cart?.map((c: any, i: number) => (
+                  <div key={i} style={{ marginBottom: '4px' }}>
+                    {c.quantity}x {c.item.name} {c.variantName ? `(${c.variantName})` : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       {printPortalReady &&
         orderSuccess &&
         createPortal(

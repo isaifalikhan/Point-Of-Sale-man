@@ -21,8 +21,8 @@ export default function KDSPage() {
     try {
       const res = await apiClient.get('/orders');
       // Filter out completed or cancelled orders for KDS
-      const activeOrders = res.data.filter((o: any) => 
-        o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && o.status !== 'READY'
+      const activeOrders = res.data.filter((o: any) =>
+        o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
       );
       setOrders(activeOrders);
     } catch (error) {
@@ -178,9 +178,9 @@ export default function KDSPage() {
               ) : (
                  <Button 
                    className="w-full rounded-none rounded-b-lg h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-lg" 
-                   onClick={() => updateStatus(order.id, 'READY')}
+                   onClick={() => updateStatus(order.id, 'COMPLETED')}
                  >
-                   <CheckCircle2 className="mr-2 h-5 w-5" /> BUMP TO READY
+                   <CheckCircle2 className="mr-2 h-5 w-5" /> MARK COMPLETED
                  </Button>
               )}
             </CardFooter>

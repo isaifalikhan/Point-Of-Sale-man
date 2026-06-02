@@ -37,8 +37,8 @@ export class CreateOrderPaymentDto {
   @Min(0)
   amount!: number;
 
-  @IsIn(['CASH', 'CARD', 'WALLET'])
-  method!: 'CASH' | 'CARD' | 'WALLET';
+  @IsIn(['CASH', 'CARD', 'WALLET', 'EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER'])
+  method!: 'CASH' | 'CARD' | 'WALLET' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
 }
 
 export class CreateOrderDto {
@@ -74,6 +74,13 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   deliveryAddress?: string;
+}
+
+export class CheckoutOrderDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderPaymentDto)
+  payments!: CreateOrderPaymentDto[];
 }
 
 

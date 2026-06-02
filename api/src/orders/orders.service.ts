@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import { CheckoutOrderDto, CreateOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
 
 @Injectable()
 export class OrdersService {
@@ -148,6 +148,7 @@ export class OrdersService {
         items: { include: { item: true } },
         table: true,
         user: true,
+        payments: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -184,6 +185,60 @@ export class OrdersService {
       where: { id: itemId, orderId },
       data: { status },
       include: { item: true }
+    });
+  }
+
+  async checkoutOrder(tenantId: string, orderId: string, dto: CheckoutOrderDto) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, branch: { tenantId } },
+      include: { payments: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status !== 'COMPLETED') {
+      throw new BadRequestException('Order must be completed by kitchen before checkout');
+    }
+
+    if (!dto.payments || dto.payments.length === 0) {
+      throw new BadRequestException('At least one payment is required');
+    }
+
+    const alreadyPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+    const incomingPaid = dto.payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalPaid = alreadyPaid + incomingPaid;
+
+    if (totalPaid < order.totalAmount) {
+      throw new BadRequestException(
+        `Insufficient payment. Required: ${order.totalAmount}, got: ${totalPaid}`,
+      );
+    }
+
+    await this.prisma.payment.createMany({
+      data: dto.payments.map((p) => ({
+        orderId: order.id,
+        amount: p.amount,
+        method: p.method,
+        status: 'COMPLETED',
+      })),
+    });
+
+    if (order.type === 'DINE_IN' && order.tableId) {
+      await this.prisma.table.update({
+        where: { id: order.tableId },
+        data: { status: 'AVAILABLE' },
+      });
+    }
+
+    return this.prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items: { include: { item: true } },
+        payments: true,
+        table: true,
+      },
     });
   }
 }

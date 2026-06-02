@@ -446,12 +446,13 @@
       print-color-adjust: exact !important;
     }
 
-    /* #print-receipt is portaled to document.body so this hides the app shell without leaving a "ghost" layout (blank first page). */
-    body > *:not(#print-receipt) {
+    /* Print portals are mounted on document.body; hide app shell without blank ghost pages. */
+    body > *:not(#print-receipt):not(#print-kitchen) {
       display: none !important;
     }
 
-    #print-receipt {
+    #print-receipt,
+    #print-kitchen {
       display: block !important;
       position: static !important;
       left: auto !important;
@@ -469,7 +470,8 @@
 
     /* Do not zero margins on every descendant — it nukes inline spacing in the receipt */
 
-    #print-receipt > div {
+    #print-receipt > div,
+    #print-kitchen > div {
       width: 100% !important;
       max-width: 100% !important;
       margin: 0 auto !important;
