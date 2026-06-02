@@ -20,6 +20,22 @@ import { BRAND } from '@/config/brand';
 import { VENUE } from '@/config/venue-public';
 
 const EMPTY_DELIVERY: DeliveryDetails = { riderName: '', phone: '', address: '' };
+type PaymentMethod = 'CASH' | 'CARD' | 'WALLET' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
+type ApiPaymentMethod = 'CASH' | 'CARD' | 'WALLET';
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'CARD', label: 'Card' },
+  { value: 'WALLET', label: 'Wallet' },
+  { value: 'EASYPAISA', label: 'Easypaisa' },
+  { value: 'JAZZCASH', label: 'JazzCash' },
+  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+];
+
+const toApiPaymentMethod = (method: PaymentMethod): ApiPaymentMethod => {
+  if (method === 'EASYPAISA' || method === 'JAZZCASH') return 'WALLET';
+  if (method === 'BANK_TRANSFER') return 'CARD';
+  return method;
+};
 
 interface MenuItem {
   id: string;
@@ -164,8 +180,11 @@ export default function POSPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'SPLIT' | 'PARTIAL'>('FULL');
   const [amountTendered, setAmountTendered] = useState<string>('');
+  const [fullPaymentMethod, setFullPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [splitPaymentMethod, setSplitPaymentMethod] = useState<PaymentMethod>('CARD');
+  const [partialPaymentMethod, setPartialPaymentMethod] = useState<PaymentMethod>('CASH');
   const [splitCount, setSplitCount] = useState<number>(2);
-  const [partialPayments, setPartialPayments] = useState<{amount: number, method: string}[]>([]);
+  const [partialPayments, setPartialPayments] = useState<{amount: number, method: PaymentMethod}[]>([]);
 
 
   // Variant Selection State
@@ -265,7 +284,7 @@ export default function POSPage() {
     }
   }, [addToCart]);
 
-  const finalizeOrder = async (paymentsArray: {amount: number, method: string}[]) => {
+  const finalizeOrder = async (paymentsArray: {amount: number, method: PaymentMethod}[]) => {
     if (cart.length === 0 || branches.length === 0) return;
 
     if (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails)) {
@@ -279,7 +298,10 @@ export default function POSPage() {
         type: orderType,
         branchId: branches[0].id,
         tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
-        payments: paymentsArray,
+        payments: paymentsArray.map((p) => ({
+          amount: p.amount,
+          method: toApiPaymentMethod(p.method),
+        })),
         ...(orderType === 'DELIVERY'
           ? {
               deliveryRiderName: deliveryDetails.riderName.trim(),
@@ -710,13 +732,24 @@ export default function POSPage() {
                <div className="space-y-3 sm:space-y-4">
                  <div className="space-y-2">
                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Amount Tendered (Cash)</label>
-                   <Input 
+                  <Input 
                      type="number" 
                      placeholder="Enter amount given by customer..." 
                      className="h-12 sm:h-14 text-lg sm:text-xl font-bold"
                      value={amountTendered}
                      onChange={(e) => setAmountTendered(e.target.value)}
                    />
+                  <select
+                    className="flex h-12 w-full items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
+                    value={fullPaymentMethod}
+                    onChange={(e) => setFullPaymentMethod(e.target.value as PaymentMethod)}
+                  >
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
                    {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < subtotal && (
                      <div className="flex items-center gap-2 text-xs sm:text-sm p-2.5 sm:p-3 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-200">
                         <span className="text-rose-500">⚠</span>
@@ -733,7 +766,7 @@ export default function POSPage() {
                  <Button 
                    className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 text-sm sm:text-base"
                    disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < subtotal}
-                   onClick={() => finalizeOrder([{ amount: subtotal, method: 'CASH' }])}
+                  onClick={() => finalizeOrder([{ amount: subtotal, method: fullPaymentMethod }])}
                  >
                    {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Complete Payment'}
                  </Button>
@@ -742,7 +775,7 @@ export default function POSPage() {
 
              {paymentMode === 'SPLIT' && (
                <div className="space-y-3 sm:space-y-4">
-                  <div className="space-y-2">
+                 <div className="space-y-2">
                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Split How Many Ways?</label>
                      <div className="flex items-center justify-center gap-3 sm:gap-4">
                         <Button variant="outline" size="icon" className="h-10 w-10 sm:h-11 sm:w-11" onClick={() => setSplitCount(Math.max(2, splitCount - 1))}><Minus className="h-4 w-4" /></Button>
@@ -754,12 +787,26 @@ export default function POSPage() {
                      <span className="font-bold text-indigo-700 text-sm sm:text-base">Per Person</span>
                      <span className="text-xl sm:text-2xl font-black text-indigo-900">Rs. {(subtotal / splitCount).toFixed(0)}</span>
                   </div>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment Method</label>
+                    <select
+                      className="flex h-12 w-full items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
+                      value={splitPaymentMethod}
+                      onChange={(e) => setSplitPaymentMethod(e.target.value as PaymentMethod)}
+                    >
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                 </div>
                   <Button 
                     className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 mt-2 sm:mt-4 text-sm sm:text-base"
                     disabled={processingOrder}
                     onClick={() => {
                       const splitVal = subtotal / splitCount;
-                      const payments = Array(splitCount).fill({ amount: splitVal, method: 'CARD' });
+                      const payments = Array(splitCount).fill({ amount: splitVal, method: splitPaymentMethod });
                       finalizeOrder(payments);
                     }}
                   >
@@ -780,29 +827,31 @@ export default function POSPage() {
                       onChange={(e) => setAmountTendered(e.target.value)}
                     />
                     <div className="grid grid-cols-2 gap-2 mt-2">
+                       <select
+                         className="col-span-2 flex h-10 w-full items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
+                         value={partialPaymentMethod}
+                         onChange={(e) => setPartialPaymentMethod(e.target.value as PaymentMethod)}
+                       >
+                         {PAYMENT_METHODS.map((m) => (
+                           <option key={m.value} value={m.value}>
+                             {m.label}
+                           </option>
+                         ))}
+                       </select>
                        <Button 
                          variant="outline" 
-                         className="h-10 font-bold text-xs sm:text-sm"
+                         className="h-10 font-bold text-xs sm:text-sm col-span-2"
                          disabled={!amountTendered || isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) <= 0}
                          onClick={() => {
                            if (!amountTendered || isNaN(parseFloat(amountTendered))) return;
-                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CASH' }]);
+                           setPartialPayments([
+                             ...partialPayments,
+                             { amount: parseFloat(amountTendered), method: partialPaymentMethod },
+                           ]);
                            setAmountTendered('');
                          }}
                        >
-                         + Add as Cash
-                       </Button>
-                       <Button 
-                         variant="outline" 
-                         className="h-10 font-bold text-xs sm:text-sm"
-                         disabled={!amountTendered || isNaN(parseFloat(amountTendered)) || parseFloat(amountTendered) <= 0}
-                         onClick={() => {
-                           if (!amountTendered || isNaN(parseFloat(amountTendered))) return;
-                           setPartialPayments([...partialPayments, { amount: parseFloat(amountTendered), method: 'CARD' }]);
-                           setAmountTendered('');
-                         }}
-                       >
-                         + Add as Card
+                         + Add Payment
                        </Button>
                     </div>
                   </div>
@@ -813,7 +862,7 @@ export default function POSPage() {
                         <div key={idx} className="flex justify-between items-center p-2 text-xs sm:text-sm font-bold border-b">
                            <div className="flex items-center gap-2">
                              <span className="text-slate-500">Payment {idx + 1}</span>
-                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.method === 'CASH' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.method === 'CASH' ? 'bg-emerald-100 text-emerald-700' : p.method === 'CARD' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>
                                {p.method}
                              </span>
                            </div>
