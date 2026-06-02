@@ -513,10 +513,21 @@ export default function POSPage() {
   );
   const payableTotal = activeKitchenOrder?.totalAmount ?? subtotal;
 
-  const availableTables = useMemo(() => 
-    tables.filter(t => t.status === 'AVAILABLE'), 
-    [tables]
-  );
+  const availableTables = useMemo(() => {
+    const tableNumber = (name: string) => {
+      const match = name?.match(/(\d+)\s*$/);
+      return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+    };
+
+    return tables
+      .filter((t) => t.status === 'AVAILABLE')
+      .slice()
+      .sort((a, b) => {
+        const diff = tableNumber(a.name) - tableNumber(b.name);
+        if (diff !== 0) return diff;
+        return String(a.name).localeCompare(String(b.name));
+      });
+  }, [tables]);
 
   const filteredItems = useMemo(() => 
     items.filter(item => 

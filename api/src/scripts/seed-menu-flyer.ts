@@ -231,6 +231,22 @@ const MENU: CategorySeed[] = [
       { name: 'Pista Cream', price: 130 },
       { name: 'Vanilla Cream', price: 140 },
       { name: 'Special Faloda', price: 200 },
+      { name: 'King Kulfa', variants: { '2 Scoops': 140, '3 Scoops': 200 } },
+      { name: 'Pistachio', variants: { '2 Scoops': 140, '3 Scoops': 200 } },
+      { name: 'Mango', variants: { '2 Scoops': 120, '3 Scoops': 180 } },
+      { name: 'Strawberry', variants: { '2 Scoops': 120, '3 Scoops': 180 } },
+      { name: 'Chocolate', variants: { '2 Scoops': 120, '3 Scoops': 180 } },
+      { name: 'Vanilla', variants: { '2 Scoops': 140, '3 Scoops': 200 } },
+      { name: 'Criminal Crunch', variants: { '2 Scoops': 120, '3 Scoops': 180 } },
+    ],
+  },
+  {
+    name: 'Beverages',
+    products: [
+      { name: 'Water Mineral', variants: { '500 ml': 60, '1 Liter': 120 } },
+      { name: 'Soft Drink', variants: { '300 ml': 80, '1 Liter': 180, '1.5 Liter': 220, Jumbo: 270 } },
+      { name: 'Sting', variants: { '300 ml': 100, '500 ml': 150 } },
+      { name: 'Glass', price: 5 },
     ],
   },
   {

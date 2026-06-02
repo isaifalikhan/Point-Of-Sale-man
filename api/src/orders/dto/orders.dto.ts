@@ -9,6 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PaymentMethod } from '@prisma/client';
 
 export class CreateOrderItemDto {
   @IsString()
@@ -37,8 +38,8 @@ export class CreateOrderPaymentDto {
   @Min(0)
   amount!: number;
 
-  @IsIn(['CASH', 'CARD', 'WALLET', 'EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER'])
-  method!: 'CASH' | 'CARD' | 'WALLET' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
+  @IsIn(Object.values(PaymentMethod))
+  method!: PaymentMethod;
 }
 
 export class CreateOrderDto {
