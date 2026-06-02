@@ -1356,20 +1356,20 @@ export default function POSPage() {
       {printPortalReady &&
         kitchenTicket &&
         createPortal(
-          <div id="print-kitchen" className="hidden print:block bg-white" aria-hidden>
-            <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '13px', color: 'black' }}>
-              <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>KITCHEN TICKET</div>
-                <div style={{ fontSize: '12px', fontWeight: 'bold' }}>#{kitchenTicket.orderNumber}</div>
+          <div id="print-kitchen" aria-hidden>
+            <div style={{ width: '100%', fontFamily: 'Courier New, Courier, monospace', fontSize: '15px', color: '#000', fontWeight: 700 }}>
+              <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '18px', fontWeight: 700 }}>KITCHEN TICKET</div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>#{kitchenTicket.orderNumber}</div>
               </div>
-              <div style={{ fontSize: '10px', marginBottom: '8px' }}>
+              <div style={{ fontSize: '13px', marginBottom: '8px', fontWeight: 700 }}>
                 <div>Type: {kitchenTicket.orderType?.replace('_', ' ')}</div>
                 {kitchenTicket.orderType === 'DINE_IN' && <div>Table: {kitchenTicket.tableName}</div>}
                 {kitchenTicket.delivery && <div>Rider: {kitchenTicket.delivery.riderName}</div>}
               </div>
-              <div style={{ borderTop: '1px dashed black', paddingTop: '8px' }}>
+              <div style={{ borderTop: '2px solid #000', paddingTop: '8px' }}>
                 {kitchenTicket.cart?.map((c: any, i: number) => (
-                  <div key={i} style={{ marginBottom: '4px' }}>
+                  <div key={i} style={{ marginBottom: '6px', fontWeight: 700 }}>
                     {c.quantity}x {c.item.name} {c.variantName ? `(${c.variantName})` : ''}
                   </div>
                 ))}
@@ -1381,50 +1381,50 @@ export default function POSPage() {
       {printPortalReady &&
         orderSuccess &&
         createPortal(
-          <div id="print-receipt" className="hidden print:block bg-white" aria-hidden>
-            <div style={{ width: '100%', fontFamily: 'Courier New, monospace', fontSize: '13px', color: 'black' }}>
-              <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{BRAND.name}</div>
-                <div style={{ fontSize: '9px' }}>{VENUE.addressLines.join(', ')}</div>
-                <div style={{ fontSize: '9px' }}>Tel: {VENUE.phones[0]!.numbers[0]}</div>
+          <div id="print-receipt" aria-hidden>
+            <div style={{ width: '100%', fontFamily: 'Courier New, Courier, monospace', fontSize: '15px', color: '#000', fontWeight: 700 }}>
+              <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '20px', fontWeight: 700 }}>{BRAND.name}</div>
+                <div style={{ fontSize: '11px', fontWeight: 700 }}>{VENUE.addressLines.join(', ')}</div>
+                <div style={{ fontSize: '11px', fontWeight: 700 }}>Tel: {VENUE.phones[0]!.numbers[0]}</div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 700 }}>
                 <span>Date: {orderSuccess?.timestamp?.toLocaleDateString()}</span>
                 <span>Time: {orderSuccess?.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px', fontWeight: 700 }}>
                 <span>Cashier: {orderSuccess?.cashier}</span>
                 <span>{orderSuccess?.orderType?.replace('_', ' ')}</span>
               </div>
 
               {orderSuccess?.delivery && (
-                <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px', fontSize: '9px' }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>DELIVERY</div>
+                <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px', fontSize: '11px', fontWeight: 700 }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>DELIVERY</div>
                   <div>Rider: {orderSuccess.delivery.riderName}</div>
                   <div>Cell: {orderSuccess.delivery.phone}</div>
                   <div>Addr: {orderSuccess.delivery.address}</div>
                 </div>
               )}
 
-              <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '9px', marginBottom: '6px' }}>
+              <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '11px', marginBottom: '6px' }}>
                   <span>ITEM</span>
                   <span>AMT</span>
                 </div>
                 {orderSuccess?.cart?.map((c: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 700 }}>
                     <div style={{ flex: 1, paddingRight: '8px' }}>
-                      <div style={{ fontWeight: 'bold' }}>{c.quantity}x {c.item.name}</div>
-                      {c.variantName && <div style={{ fontSize: '9px', marginLeft: '10px' }}>- {c.variantName}</div>}
-                      {c.addonNames?.map((a: string) => <div key={a} style={{ fontSize: '9px', marginLeft: '10px' }}>+ {a}</div>)}
+                      <div style={{ fontWeight: 700 }}>{c.quantity}x {c.item.name}</div>
+                      {c.variantName && <div style={{ fontSize: '11px', marginLeft: '10px', fontWeight: 700 }}>- {c.variantName}</div>}
+                      {c.addonNames?.map((a: string) => <div key={a} style={{ fontSize: '11px', marginLeft: '10px', fontWeight: 700 }}>+ {a}</div>)}
                     </div>
-                    <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>Rs.{(c.totalPrice * c.quantity)}</span>
+                    <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Rs.{(c.totalPrice * c.quantity)}</span>
                   </div>
                 ))}
               </div>
 
-              <div style={{ borderBottom: '1px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+              <div style={{ borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px', fontWeight: 700 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                   <span>Subtotal</span>
                   <span>Rs.{orderSuccess?.subtotal}</span>
@@ -1433,13 +1433,13 @@ export default function POSPage() {
                   <span>Tax (0%)</span>
                   <span>Rs.0</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', borderTop: '1px solid black', paddingTop: '6px', marginTop: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '16px', borderTop: '2px solid #000', paddingTop: '6px', marginTop: '4px' }}>
                   <span>TOTAL</span>
                   <span>Rs.{orderSuccess?.subtotal}</span>
                 </div>
               </div>
 
-              <div style={{ marginBottom: '8px' }}>
+              <div style={{ marginBottom: '8px', fontWeight: 700 }}>
                 {orderSuccess?.payments?.map((p: any, i: number) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>{p.method}</span>
@@ -1447,17 +1447,17 @@ export default function POSPage() {
                   </div>
                 ))}
                 {(orderSuccess?.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0) > (orderSuccess?.subtotal || 0) && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: '4px' }}>
                     <span>CHANGE</span>
                     <span>Rs.{(orderSuccess?.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0) - (orderSuccess?.subtotal || 0)}</span>
                   </div>
                 )}
               </div>
 
-              <div style={{ textAlign: 'center', borderTop: '1px dashed black', paddingTop: '8px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '12px' }}>Thank You!</div>
-                <div style={{ fontSize: '9px' }}>Please come again</div>
-                <div style={{ fontSize: '8px', marginTop: '6px' }}>Powered by RestoOS</div>
+              <div style={{ textAlign: 'center', borderTop: '2px solid #000', paddingTop: '8px', fontWeight: 700 }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>Thank You!</div>
+                <div style={{ fontSize: '11px', fontWeight: 700 }}>Please come again</div>
+                <div style={{ fontSize: '10px', marginTop: '6px', fontWeight: 700 }}>Powered by RestoOS</div>
               </div>
             </div>
           </div>,
