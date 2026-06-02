@@ -2,8 +2,9 @@ import { PrismaClient, TableStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-/** Rooftop: 4 seats each. Ground: mixed capacities to show 1–4 chair layouts */
-const GROUND_CAPACITIES = [2, 4, 4, 6] as const;
+const FAMILY_CAPACITY = 6;
+const GENERAL_CAPACITY = 4;
+const ROOFTOP_CAPACITY = 4;
 
 async function main() {
   console.log('Seeding tables for Baba Jani Fast Food...');
@@ -28,16 +29,16 @@ async function main() {
 
   await prisma.table.deleteMany({ where: { branchId } });
 
-  console.log('Creating 22 tables (Rooftop 1–18, Ground 1–4)...');
+  console.log('Creating 31 tables (Family 1–10, General 11–21, Rooftop 1–10)...');
 
   const tablePromises: Promise<unknown>[] = [];
 
-  for (let i = 1; i <= 18; i++) {
+  for (let i = 1; i <= 10; i++) {
     tablePromises.push(
       prisma.table.create({
         data: {
-          name: `Rooftop - Table ${i}`,
-          capacity: 4,
+          name: `Family Hall - Table ${i}`,
+          capacity: FAMILY_CAPACITY,
           status: TableStatus.AVAILABLE,
           branchId,
           x: 0,
@@ -47,12 +48,27 @@ async function main() {
     );
   }
 
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 11; i <= 21; i++) {
     tablePromises.push(
       prisma.table.create({
         data: {
-          name: `Ground Floor - Table ${i}`,
-          capacity: GROUND_CAPACITIES[i - 1] ?? 4,
+          name: `General Hall - Table ${i}`,
+          capacity: GENERAL_CAPACITY,
+          status: TableStatus.AVAILABLE,
+          branchId,
+          x: 0,
+          y: 0,
+        },
+      }),
+    );
+  }
+
+  for (let i = 1; i <= 10; i++) {
+    tablePromises.push(
+      prisma.table.create({
+        data: {
+          name: `Rooftop - Table ${i}`,
+          capacity: ROOFTOP_CAPACITY,
           status: TableStatus.AVAILABLE,
           branchId,
           x: 0,
@@ -65,7 +81,7 @@ async function main() {
   await Promise.all(tablePromises);
 
   console.log(
-    'Done: 18 Rooftop (4 seats) + 4 Ground Floor (2/4/4/6 seats) = 22 total.',
+    'Done: 10 Family Hall + 11 General Hall + 10 Rooftop = 31 total.',
   );
 }
 

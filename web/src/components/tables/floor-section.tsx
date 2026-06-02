@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CloudSun, Home } from "lucide-react";
+import { Building2, CloudSun, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FloorConfig, FloorId, TableRecord } from "@/lib/table-floors";
 import { TableWithChairs } from "@/components/tables/table-with-chairs";
@@ -25,6 +25,24 @@ const FLOOR_THEMES: Record<
     icon: typeof CloudSun;
   }
 > = {
+  family: {
+    accent: "warm",
+    panel:
+      "bg-gradient-to-br from-rose-950/90 via-stone-900 to-rose-950 border-rose-600/25",
+    header: "from-rose-500/15 via-transparent to-orange-800/10",
+    pattern:
+      "opacity-[0.1] [background-image:repeating-linear-gradient(90deg,rgba(251,113,133,0.15)_0px,rgba(251,113,133,0.15)_1px,transparent_1px,transparent_48px),repeating-linear-gradient(0deg,rgba(251,113,133,0.08)_0px,rgba(251,113,133,0.08)_1px,transparent_1px,transparent_48px)]",
+    icon: Users,
+  },
+  general: {
+    accent: "warm",
+    panel:
+      "bg-gradient-to-br from-amber-950/90 via-stone-900 to-amber-950 border-amber-600/25",
+    header: "from-amber-500/15 via-transparent to-orange-800/10",
+    pattern:
+      "opacity-[0.1] [background-image:repeating-linear-gradient(90deg,rgba(251,191,36,0.15)_0px,rgba(251,191,36,0.15)_1px,transparent_1px,transparent_48px),repeating-linear-gradient(0deg,rgba(251,191,36,0.08)_0px,rgba(251,191,36,0.08)_1px,transparent_1px,transparent_48px)]",
+    icon: Building2,
+  },
   rooftop: {
     accent: "sky",
     panel:
@@ -33,15 +51,6 @@ const FLOOR_THEMES: Record<
     pattern:
       "opacity-[0.12] [background-image:radial-gradient(circle_at_20%_20%,rgba(125,211,252,0.5)_0%,transparent_45%),radial-gradient(circle_at_80%_10%,rgba(199,210,254,0.35)_0%,transparent_40%)]",
     icon: CloudSun,
-  },
-  ground: {
-    accent: "warm",
-    panel:
-      "bg-gradient-to-br from-amber-950/90 via-stone-900 to-amber-950 border-amber-600/25",
-    header: "from-amber-500/15 via-transparent to-orange-800/10",
-    pattern:
-      "opacity-[0.1] [background-image:repeating-linear-gradient(90deg,rgba(251,191,36,0.15)_0px,rgba(251,191,36,0.15)_1px,transparent_1px,transparent_48px),repeating-linear-gradient(0deg,rgba(251,191,36,0.08)_0px,rgba(251,191,36,0.08)_1px,transparent_1px,transparent_48px)]",
-    icon: Home,
   },
 };
 
@@ -91,7 +100,11 @@ export function FloorSection({
                   floor.id === "rooftop" ? "text-sky-300/90" : "text-amber-300/90",
                 )}
               >
-                {floor.id === "rooftop" ? "Level 2 · Open air" : "Level 1 · Indoor"}
+                {floor.id === "rooftop"
+                  ? "Open Air Zone"
+                  : floor.id === "family"
+                    ? "Family Seating"
+                    : "General Seating"}
               </p>
               <h2 className="mt-1 font-heading text-2xl font-black tracking-tight text-white sm:text-3xl">
                 {floor.title}
@@ -104,7 +117,7 @@ export function FloorSection({
           <div
             className={cn(
               "rounded-2xl border border-white/10 px-4 py-3 text-center backdrop-blur-sm",
-              floor.id === "rooftop" ? "bg-sky-950/40" : "bg-amber-950/40",
+                floor.id === "rooftop" ? "bg-sky-950/40" : "bg-amber-950/40",
             )}
           >
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
@@ -125,7 +138,9 @@ export function FloorSection({
             "mx-auto grid max-w-5xl gap-x-4 gap-y-10 sm:gap-x-6 sm:gap-y-12",
             floor.id === "rooftop"
               ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6"
-              : "grid-cols-2 sm:grid-cols-4 max-w-3xl",
+              : floor.id === "general"
+                ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-6"
+                : "grid-cols-2 sm:grid-cols-4 max-w-3xl",
           )}
         >
           {tables.map((table) => (
@@ -154,7 +169,11 @@ export function FloorSection({
             floor.id === "rooftop" ? "text-sky-200" : "text-amber-200",
           )}
         >
-          {floor.id === "rooftop" ? "ROOFTOP" : "GROUND"}
+          {floor.id === "rooftop"
+            ? "ROOFTOP"
+            : floor.id === "family"
+              ? "FAMILY"
+              : "GENERAL"}
         </div>
       </div>
 

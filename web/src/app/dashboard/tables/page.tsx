@@ -43,7 +43,7 @@ export default function FloorPlanManagement() {
     name: '',
     capacity: 4,
     branchId: '',
-    floorIndex: 0 as 0 | 1,
+    floorIndex: 0,
     tableNum: 1,
   });
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -184,7 +184,7 @@ export default function FloorPlanManagement() {
               </h1>
             </div>
             <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-500">
-              {TOTAL_TABLES} tables · Rooftop 1–18 · Ground 1–4
+              {TOTAL_TABLES} tables · Family 1-10 · General 11-21 · Rooftop 1-10
             </p>
           </div>
 
@@ -219,7 +219,7 @@ export default function FloorPlanManagement() {
                     className="flex h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
                     value={newTable.floorIndex}
                     onChange={(e) => {
-                      const floorIndex = Number(e.target.value) as 0 | 1;
+                      const floorIndex = Number(e.target.value);
                       const floor = TABLE_FLOORS[floorIndex]!;
                       setNewTable({
                         ...newTable,
@@ -317,7 +317,7 @@ export default function FloorPlanManagement() {
             <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs">
               api/src/scripts/seed-tables.ts
             </code>{' '}
-            to seed Rooftop 1–18 and Ground 1–4.
+            to seed Family 1-10, General 11-21, and Rooftop 1-10.
           </p>
         )}
       </div>
