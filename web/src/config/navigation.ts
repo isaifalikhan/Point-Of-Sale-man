@@ -3,6 +3,7 @@ import {
   BarChart3,
   ChefHat,
   Grid3x3,
+  History,
   Home,
   LayoutDashboard,
   List,
@@ -57,6 +58,18 @@ export const DASHBOARD_NAV_RESTAURANT: DashboardNavItem[] = [
     icon: ChefHat,
     businessTypes: ['RESTAURANT'],
     requiredPermissions: [Permission.KITCHEN_OPS, Permission.ORDERS_VIEW],
+    section: 'main',
+  },
+  {
+    href: '/dashboard/history',
+    label: 'History',
+    icon: History,
+    businessTypes: ['RESTAURANT'],
+    requiredPermissions: [
+      Permission.ORDERS_VIEW,
+      Permission.POS_ACCESS,
+      Permission.ANALYTICS_VIEW,
+    ],
     section: 'main',
   },
 ];

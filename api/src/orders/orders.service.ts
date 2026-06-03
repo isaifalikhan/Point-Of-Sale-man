@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AddOrderItemsDto, CheckoutOrderDto, CreateOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import {
+  AddOrderItemsDto,
+  CheckoutOrderDto,
+  CreateOrderDto,
+  OrderHistoryQueryDto,
+  UpdateOrderStatusDto,
+} from './dto/orders.dto';
 import type { CreateOrderItemDto } from './dto/orders.dto';
 
 @Injectable()
@@ -223,14 +229,93 @@ export class OrdersService {
         branch: { tenantId },
         ...(branchId ? { branchId } : {}),
       },
-      include: {
-        items: { include: { item: true } },
-        table: true,
-        user: true,
-        payments: true,
-      },
+      include: this.orderInclude(),
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private orderInclude() {
+    return {
+      items: { include: { item: true }, orderBy: { id: 'asc' as const } },
+      table: true,
+      user: { select: { id: true, name: true, email: true } },
+      payments: { orderBy: { createdAt: 'asc' as const } },
+      branch: { select: { id: true, name: true } },
+    };
+  }
+
+  private buildHistoryWhere(tenantId: string, query: OrderHistoryQueryDto) {
+    const where: Record<string, unknown> = {
+      branch: { tenantId },
+    };
+
+    if (query.branchId) where.branchId = query.branchId;
+    if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
+    if (query.search?.trim()) {
+      where.orderNumber = { contains: query.search.trim(), mode: 'insensitive' };
+    }
+    if (query.from || query.to) {
+      const createdAt: Record<string, Date> = {};
+      if (query.from) {
+        const from = new Date(query.from);
+        from.setHours(0, 0, 0, 0);
+        createdAt.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(query.to);
+        to.setHours(23, 59, 59, 999);
+        createdAt.lte = to;
+      }
+      where.createdAt = createdAt;
+    }
+
+    return where;
+  }
+
+  async getOrderHistory(tenantId: string, query: OrderHistoryQueryDto) {
+    const where = this.buildHistoryWhere(tenantId, query);
+    const limit = query.limit ?? 200;
+    const skip = query.skip ?? 0;
+
+    const [orders, totalCount] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: this.orderInclude(),
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    let totalBilled = 0;
+    let totalCollected = 0;
+    let unpaidCount = 0;
+    let paidCount = 0;
+
+    for (const order of orders) {
+      totalBilled += order.totalAmount || 0;
+      const paid = order.payments.reduce((s, p) => s + p.amount, 0);
+      totalCollected += paid;
+      if (paid >= (order.totalAmount || 0) && order.status !== 'CANCELLED') {
+        paidCount += 1;
+      } else if (order.status !== 'CANCELLED') {
+        unpaidCount += 1;
+      }
+    }
+
+    return {
+      orders,
+      totalCount,
+      summary: {
+        shown: orders.length,
+        totalBilled,
+        totalCollected,
+        unpaidCount,
+        paidCount,
+      },
+    };
   }
 
   async updateOrderStatus(tenantId: string, orderId: string, dto: UpdateOrderStatusDto) {

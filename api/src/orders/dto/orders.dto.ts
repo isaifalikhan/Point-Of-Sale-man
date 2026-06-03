@@ -5,10 +5,11 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PaymentMethod } from '@prisma/client';
 
 export class CreateOrderItemDto {
@@ -95,4 +96,45 @@ export class CheckoutOrderDto {
 export class UpdateOrderStatusDto {
   @IsIn(['PENDING', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'])
   status!: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'COMPLETED' | 'CANCELLED';
+}
+
+export class OrderHistoryQueryDto {
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @IsOptional()
+  @IsIn(['PENDING', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'])
+  status?: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'COMPLETED' | 'CANCELLED';
+
+  @IsOptional()
+  @IsIn(['DINE_IN', 'TAKEAWAY', 'DELIVERY'])
+  type?: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  /** ISO date (YYYY-MM-DD) start of range */
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  /** ISO date (YYYY-MM-DD) end of range */
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value !== undefined && value !== '' ? Number(value) : 200))
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => (value !== undefined && value !== '' ? Number(value) : 0))
+  @IsInt()
+  @Min(0)
+  skip?: number;
 }
