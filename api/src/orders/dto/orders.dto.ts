@@ -77,6 +77,13 @@ export class CreateOrderDto {
   deliveryAddress?: string;
 }
 
+export class AddOrderItemsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderItemDto)
+  items!: CreateOrderItemDto[];
+}
+
 export class CheckoutOrderDto {
   @IsArray()
   @ValidateNested({ each: true })

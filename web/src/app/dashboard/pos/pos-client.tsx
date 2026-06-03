@@ -209,6 +209,16 @@ export default function POSPage() {
 
   const orderRef = useMemo(() => Math.floor(1000 + Math.random() * 9000), []);
 
+  const modalAddonOptions = useMemo(() => {
+    if (!selectedItemForModal?.addons?.length) return [];
+    const all = selectedItemForModal.addons;
+    const toppings = all.filter((a) => a.name.startsWith('Extra Topping'));
+    if (!toppings.length) return all;
+    if (!selectedVariant) return toppings;
+    const forSize = toppings.filter((a) => a.name.includes(`(${selectedVariant})`));
+    return forSize.length ? forSize : toppings;
+  }, [selectedItemForModal, selectedVariant]);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -366,60 +376,122 @@ export default function POSPage() {
     }
   }, [addToCart]);
 
+  const orderItemsPayload = useCallback(
+    () =>
+      cart.map((c) => ({
+        itemId: c.item.id,
+        quantity: c.quantity,
+        variantName: c.variantName,
+        addonNames: c.addonNames,
+      })),
+    [cart],
+  );
+
+  const printKitchenSlip = useCallback(
+    (
+      orderNumber: string,
+      items: CartItem[],
+      type: string,
+      tableName: string,
+      delivery: DeliveryDetails | null,
+      isAddition = false,
+    ) => {
+      setKitchenTicket({
+        orderNumber,
+        orderType: type,
+        tableName,
+        cart: [...items],
+        timestamp: new Date(),
+        isAddition,
+        delivery,
+      });
+    },
+    [],
+  );
+
   const sendToKitchen = async () => {
     if (cart.length === 0 || branches.length === 0) return;
 
-    if (orderType === 'DINE_IN' && !selectedTableId) {
-      alert('Please select a table first.');
-      return;
+    if (!activeKitchenOrder) {
+      if (orderType === 'DINE_IN' && !selectedTableId) {
+        alert('Please select a table first.');
+        return;
+      }
+      if (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails)) {
+        alert('Please enter rider name, customer cell number, and delivery address.');
+        return;
+      }
     }
 
-    if (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails)) {
-      alert('Please enter rider name, customer cell number, and delivery address.');
-      return;
-    }
-
+    const cartSnapshot = [...cart];
     setProcessingOrder(true);
     try {
-      const created = await apiClient.post('/orders', {
-        type: orderType,
-        branchId: branches[0].id,
-        tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
-        items: cart.map(c => ({
-          itemId: c.item.id,
-          quantity: c.quantity,
-          variantName: c.variantName,
-          addonNames: c.addonNames,
-        })),
-        ...(orderType === 'DELIVERY'
-          ? {
-              deliveryRiderName: deliveryDetails.riderName.trim(),
-              deliveryPhone: deliveryDetails.phone.trim(),
-              deliveryAddress: deliveryDetails.address.trim(),
-            }
-          : {}),
-      });
+      if (activeKitchenOrder) {
+        const updated = await apiClient.patch(`/orders/${activeKitchenOrder.id}/items`, {
+          items: orderItemsPayload(),
+        });
 
-      setActiveKitchenOrder({
-        id: created.data.id,
-        orderNumber: created.data.orderNumber,
-        status: created.data.status,
-        totalAmount: created.data.totalAmount,
-        type: created.data.type,
-        table: created.data.table,
-      });
-      setCheckoutAutoOpened(false);
+        setActiveKitchenOrder({
+          id: updated.data.id,
+          orderNumber: updated.data.orderNumber,
+          status: updated.data.status,
+          totalAmount: updated.data.totalAmount,
+          type: updated.data.type,
+          table: updated.data.table,
+        });
+        if (updated.data.status !== 'COMPLETED') {
+          setCheckoutAutoOpened(false);
+          setIsPaymentModalOpen(false);
+        }
 
-      setKitchenTicket({
-        orderNumber: created.data.orderNumber,
-        orderType,
-        tableName:
-          orderType === 'DINE_IN'
-            ? (tables.find((t) => t.id === selectedTableId)?.name || 'N/A')
+        printKitchenSlip(
+          updated.data.orderNumber,
+          cartSnapshot,
+          updated.data.type,
+          updated.data.type === 'DINE_IN'
+            ? updated.data.table?.name || activeKitchenOrder.table?.name || 'N/A'
             : 'N/A',
-        cart: [...cart],
-        timestamp: new Date(),
-        delivery:
+          updated.data.type === 'DELIVERY'
+            ? {
+                riderName: updated.data.deliveryRiderName || '',
+                phone: updated.data.deliveryPhone || '',
+                address: updated.data.deliveryAddress || '',
+              }
+            : null,
+          true,
+        );
+      } else {
+        const created = await apiClient.post('/orders', {
+          type: orderType,
+          branchId: branches[0].id,
+          tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
+          items: orderItemsPayload(),
+          ...(orderType === 'DELIVERY'
+            ? {
+                deliveryRiderName: deliveryDetails.riderName.trim(),
+                deliveryPhone: deliveryDetails.phone.trim(),
+                deliveryAddress: deliveryDetails.address.trim(),
+              }
+            : {}),
+        });
+
+        setActiveKitchenOrder({
+          id: created.data.id,
+          orderNumber: created.data.orderNumber,
+          status: created.data.status,
+          totalAmount: created.data.totalAmount,
+          type: created.data.type,
+          table: created.data.table,
+        });
+        setCheckoutAutoOpened(false);
+
+        printKitchenSlip(
+          created.data.orderNumber,
+          cartSnapshot,
+          orderType,
+          orderType === 'DINE_IN'
+            ? tables.find((t) => t.id === selectedTableId)?.name || 'N/A'
+            : 'N/A',
           orderType === 'DELIVERY'
             ? {
                 riderName: deliveryDetails.riderName.trim(),
@@ -427,11 +499,10 @@ export default function POSPage() {
                 address: deliveryDetails.address.trim(),
               }
             : null,
-      });
+        );
+      }
 
       setCart([]);
-      setSelectedTableId('');
-      setDeliveryDetails(EMPTY_DELIVERY);
     } catch (error) {
       console.error('Kitchen ticket failed:', error);
       alert('Failed to send order to kitchen.');
@@ -752,15 +823,15 @@ export default function POSPage() {
             </div>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-3">
              {activeKitchenOrder && (
                <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                 <p className="font-black uppercase tracking-widest text-slate-500">Kitchen Ticket</p>
+                 <p className="font-black uppercase tracking-widest text-slate-500">Open order</p>
                  <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">
-                   Waiting for #{activeKitchenOrder.orderNumber}
+                   #{activeKitchenOrder.orderNumber}
                  </p>
                  <p className="mt-1 font-semibold text-slate-800">
-                   #{activeKitchenOrder.orderNumber} - {activeKitchenOrder.status === 'COMPLETED' ? 'Order Completed' : activeKitchenOrder.status}
+                   {activeKitchenOrder.status === 'COMPLETED' ? 'Ready for checkout' : `Kitchen: ${activeKitchenOrder.status}`}
                  </p>
                  <p className="mt-1 text-slate-500">
                    {activeKitchenOrder.type === 'DINE_IN'
@@ -769,38 +840,42 @@ export default function POSPage() {
                        ? 'Delivery order'
                        : 'Takeaway order'}
                  </p>
+                 <p className="mt-1 text-[10px] text-slate-400">Add more items to the cart, then send again.</p>
                </div>
              )}
-             {!activeKitchenOrder ? (
-               <Button
-                 className="h-16 font-black text-sm uppercase tracking-widest bg-amber-600 hover:bg-amber-700 shadow-lg border-none rounded-2xl w-full"
-                 disabled={
-                   cart.length === 0 ||
-                   processingOrder ||
-                   (orderType === 'DINE_IN' && !selectedTableId) ||
-                   (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
-                 }
-                 onClick={sendToKitchen}
-               >
-                 {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send to Kitchen'}
-               </Button>
-             ) : (
-             <Button 
-               className="h-16 font-black text-sm uppercase tracking-widest premium-gradient shadow-lg shadow-indigo-100 border-none rounded-2xl w-full" 
+             <Button
+               className="h-14 font-black text-sm uppercase tracking-widest bg-amber-600 hover:bg-amber-700 shadow-lg border-none rounded-2xl w-full"
                disabled={
+                 cart.length === 0 ||
                  processingOrder ||
-                 activeKitchenOrder.status !== 'COMPLETED'
+                 (!activeKitchenOrder &&
+                   ((orderType === 'DINE_IN' && !selectedTableId) ||
+                     (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))))
                }
-               onClick={() => {
-                 setPaymentMode('FULL');
-                 setAmountTendered('');
-                 setIsPaymentModalOpen(true);
-               }}
+               onClick={sendToKitchen}
              >
-               {activeKitchenOrder.status === 'COMPLETED'
-                 ? 'Order Completed - Proceed to Checkout'
-                 : `Waiting for Kitchen (${activeKitchenOrder.status})`}
+               {processingOrder ? (
+                 <Loader2 className="h-5 w-5 animate-spin" />
+               ) : activeKitchenOrder ? (
+                 'Send more to Kitchen'
+               ) : (
+                 'Send to Kitchen'
+               )}
              </Button>
+             {activeKitchenOrder && (
+               <Button
+                 className="h-14 font-black text-sm uppercase tracking-widest premium-gradient shadow-lg shadow-indigo-100 border-none rounded-2xl w-full"
+                 disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+                 onClick={() => {
+                   setPaymentMode('FULL');
+                   setAmountTendered('');
+                   setIsPaymentModalOpen(true);
+                 }}
+               >
+                 {activeKitchenOrder.status === 'COMPLETED'
+                   ? 'Proceed to Checkout'
+                   : `Checkout after kitchen marks done`}
+               </Button>
              )}
           </div>
         </div>
@@ -862,25 +937,31 @@ export default function POSPage() {
               <span>TOTAL</span>
               <span className="text-primary">Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}</span>
             </div>
-            {!activeKitchenOrder ? (
+            <Button
+              className="w-full h-14 font-black uppercase tracking-widest bg-amber-600 hover:bg-amber-700 rounded-xl"
+              disabled={
+                cart.length === 0 ||
+                processingOrder ||
+                (!activeKitchenOrder &&
+                  ((orderType === 'DINE_IN' && !selectedTableId) ||
+                    (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))))
+              }
+              onClick={async () => {
+                setMobileCartOpen(false);
+                await sendToKitchen();
+              }}
+            >
+              {processingOrder ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : activeKitchenOrder ? (
+                'Send more to Kitchen'
+              ) : (
+                'Send to Kitchen'
+              )}
+            </Button>
+            {activeKitchenOrder && (
               <Button
-                className="w-full h-14 font-black uppercase tracking-widest bg-amber-600 hover:bg-amber-700 rounded-xl"
-                disabled={
-                  cart.length === 0 ||
-                  processingOrder ||
-                  (orderType === 'DINE_IN' && !selectedTableId) ||
-                  (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))
-                }
-                onClick={async () => {
-                  setMobileCartOpen(false);
-                  await sendToKitchen();
-                }}
-              >
-                {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send to Kitchen'}
-              </Button>
-            ) : (
-              <Button
-                className="w-full h-14 font-black uppercase tracking-widest premium-gradient rounded-xl"
+                className="w-full h-14 mt-2 font-black uppercase tracking-widest premium-gradient rounded-xl"
                 disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
                 onClick={() => {
                   setMobileCartOpen(false);
@@ -890,8 +971,8 @@ export default function POSPage() {
                 }}
               >
                 {activeKitchenOrder.status === 'COMPLETED'
-                  ? 'Order Completed - Proceed to Checkout'
-                  : `Waiting for Kitchen (${activeKitchenOrder.status})`}
+                  ? 'Proceed to Checkout'
+                  : 'Checkout after kitchen marks done'}
               </Button>
             )}
           </div>
@@ -1119,7 +1200,12 @@ export default function POSPage() {
                           key={v.name}
                           variant={selectedVariant === v.name ? 'default' : 'outline'}
                           className={`h-auto py-2.5 sm:py-3 px-3 sm:px-4 flex flex-col items-start gap-0.5 sm:gap-1 justify-center rounded-xl transition-all ${selectedVariant === v.name ? 'premium-gradient border-none shadow-md ring-2 ring-indigo-500 ring-offset-2' : 'border-slate-100 hover:border-indigo-200'}`}
-                          onClick={() => setSelectedVariant(v.name)}
+                          onClick={() => {
+                            setSelectedVariant(v.name);
+                            setSelectedAddons((prev) =>
+                              prev.filter((name) => !name.startsWith('Extra Topping')),
+                            );
+                          }}
                         >
                            <span className="font-bold text-xs sm:text-sm">{v.name}</span>
                            <span className={`text-[10px] sm:text-xs ${selectedVariant === v.name ? 'text-white/80' : 'text-slate-500'}`}>Rs. {v.price}</span>
@@ -1129,11 +1215,11 @@ export default function POSPage() {
                </div>
              )}
 
-             {selectedItemForModal?.addons && selectedItemForModal.addons.length > 0 && (
+             {modalAddonOptions.length > 0 && (
                <div className="space-y-2 sm:space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customize / Add-ons</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Extra toppings</label>
                   <div className="space-y-1.5 sm:space-y-2 max-h-[30vh] sm:max-h-none overflow-y-auto">
-                     {selectedItemForModal.addons.map(a => (
+                     {modalAddonOptions.map(a => (
                         <div 
                           key={a.name}
                           className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all active:scale-[0.98] ${selectedAddons.includes(a.name) ? 'bg-indigo-50 border-indigo-200' : 'border-slate-100 hover:border-slate-200'}`}
@@ -1176,7 +1262,9 @@ export default function POSPage() {
       <Dialog open={!!kitchenTicket} onOpenChange={(open) => !open && setKitchenTicket(null)}>
         <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
           <div className="bg-amber-600 p-4 sm:p-6 text-white">
-            <h2 className="text-lg sm:text-xl font-black">Kitchen Ticket Sent</h2>
+            <h2 className="text-lg sm:text-xl font-black">
+              {kitchenTicket?.isAddition ? 'More items sent to kitchen' : 'Kitchen ticket sent'}
+            </h2>
             <p className="text-amber-100 text-xs sm:text-sm">Print this slip for kitchen staff</p>
           </div>
           <div className="p-4 sm:p-6 text-sm space-y-2">
@@ -1193,6 +1281,7 @@ export default function POSPage() {
                 <p key={i}>
                   {c.quantity}x {c.item.name}
                   {c.variantName ? ` (${c.variantName})` : ''}
+                  {c.addonNames?.length ? ` + ${c.addonNames.join(', ')}` : ''}
                 </p>
               ))}
             </div>
@@ -1359,7 +1448,9 @@ export default function POSPage() {
           <div id="print-kitchen" aria-hidden>
             <div style={{ width: '100%', fontFamily: 'Courier New, Courier, monospace', fontSize: '15px', color: '#000', fontWeight: 700 }}>
               <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                <div style={{ fontSize: '18px', fontWeight: 700 }}>KITCHEN TICKET</div>
+                <div style={{ fontSize: '18px', fontWeight: 700 }}>
+                  {kitchenTicket.isAddition ? 'KITCHEN — ADD ITEMS' : 'KITCHEN TICKET'}
+                </div>
                 <div style={{ fontSize: '14px', fontWeight: 700 }}>#{kitchenTicket.orderNumber}</div>
               </div>
               <div style={{ fontSize: '13px', marginBottom: '8px', fontWeight: 700 }}>
@@ -1371,6 +1462,7 @@ export default function POSPage() {
                 {kitchenTicket.cart?.map((c: any, i: number) => (
                   <div key={i} style={{ marginBottom: '6px', fontWeight: 700 }}>
                     {c.quantity}x {c.item.name} {c.variantName ? `(${c.variantName})` : ''}
+                    {c.addonNames?.map((a: string) => ` + ${a}`).join('')}
                   </div>
                 ))}
               </div>

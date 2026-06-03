@@ -1,10 +1,48 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CheckoutOrderDto, CreateOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import { AddOrderItemsDto, CheckoutOrderDto, CreateOrderDto, UpdateOrderStatusDto } from './dto/orders.dto';
+import type { CreateOrderItemDto } from './dto/orders.dto';
 
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
+
+  private buildOrderLines(items: CreateOrderItemDto[], menuItems: { id: string; price: number; variants: unknown; addons: unknown }[]) {
+    let addedTotal = 0;
+    const orderItemsData = items.map((itemDto) => {
+      const menuItem = menuItems.find((mi) => mi.id === itemDto.itemId);
+      if (!menuItem) throw new BadRequestException(`Item ${itemDto.itemId} not found`);
+
+      let itemPrice = menuItem.price;
+
+      if (itemDto.variantName && menuItem.variants) {
+        const variant = (menuItem.variants as { name: string; price: number }[]).find(
+          (v) => v.name === itemDto.variantName,
+        );
+        if (variant) itemPrice = variant.price;
+      }
+
+      if (itemDto.addonNames && menuItem.addons) {
+        const selectedAddons = (menuItem.addons as { name: string; price: number }[]).filter((a) =>
+          itemDto.addonNames?.includes(a.name),
+        );
+        itemPrice += selectedAddons.reduce((sum, a) => sum + a.price, 0);
+      }
+
+      addedTotal += itemPrice * itemDto.quantity;
+
+      return {
+        itemId: itemDto.itemId,
+        quantity: itemDto.quantity,
+        price: itemPrice,
+        variantName: itemDto.variantName,
+        addonNames: itemDto.addonNames || [],
+        notes: itemDto.notes,
+      };
+    });
+
+    return { orderItemsData, addedTotal };
+  }
 
   async createOrder(tenantId: string, userId: string, dto: CreateOrderDto) {
     // 1. Verify branch belongs to tenant
@@ -37,41 +75,7 @@ export class OrdersService {
       }
     }
 
-    // 3. Calculate total amount
-    let totalAmount = 0;
-    const orderItemsData = dto.items.map(itemDto => {
-      const menuItem = menuItems.find(mi => mi.id === itemDto.itemId);
-      if (!menuItem) throw new BadRequestException(`Item ${itemDto.itemId} not found`);
-
-      // Base price
-      let itemPrice = menuItem.price;
-
-      // Variant price (if selected)
-      if (itemDto.variantName && menuItem.variants) {
-        const variant = (menuItem.variants as any[]).find(v => v.name === itemDto.variantName);
-        if (variant) {
-          itemPrice = variant.price;
-        }
-      }
-
-      // Addons price
-      if (itemDto.addonNames && menuItem.addons) {
-        const selectedAddons = (menuItem.addons as any[]).filter(a => itemDto.addonNames?.includes(a.name));
-        const addonsPrice = selectedAddons.reduce((sum, a) => sum + a.price, 0);
-        itemPrice += addonsPrice;
-      }
-
-      totalAmount += itemPrice * itemDto.quantity;
-
-      return {
-        itemId: itemDto.itemId,
-        quantity: itemDto.quantity,
-        price: itemPrice,
-        variantName: itemDto.variantName,
-        addonNames: itemDto.addonNames || [],
-        notes: itemDto.notes,
-      };
-    });
+    const { orderItemsData, addedTotal: totalAmount } = this.buildOrderLines(dto.items, menuItems);
 
     // 4. Generate order number
     const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -136,6 +140,81 @@ export class OrdersService {
 
     return order;
 
+  }
+
+  async addItemsToOrder(tenantId: string, orderId: string, dto: AddOrderItemsDto) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, branch: { tenantId } },
+      include: { payments: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status === 'CANCELLED') {
+      throw new BadRequestException('Cannot add items to a cancelled order');
+    }
+
+    const alreadyPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+    if (alreadyPaid >= order.totalAmount) {
+      throw new BadRequestException('Order is already paid; start a new order instead');
+    }
+
+    if (!dto.items?.length) {
+      throw new BadRequestException('At least one item is required');
+    }
+
+    const itemIds = dto.items.map((i) => i.itemId);
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: { id: { in: itemIds }, tenantId },
+      include: { ingredients: true },
+    });
+
+    if (menuItems.length !== itemIds.length) {
+      throw new BadRequestException('One or more menu items are invalid or not available');
+    }
+
+    const { orderItemsData, addedTotal } = this.buildOrderLines(dto.items, menuItems);
+
+    const reopenKitchen = order.status === 'COMPLETED';
+
+    const updated = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        totalAmount: order.totalAmount + addedTotal,
+        ...(reopenKitchen
+          ? { status: 'PENDING', completedAt: null }
+          : {}),
+        items: {
+          create: orderItemsData,
+        },
+      },
+      include: {
+        items: { include: { item: true } },
+        payments: true,
+        table: true,
+      },
+    });
+
+    try {
+      for (const orderItem of orderItemsData) {
+        const matchedMenuItem = menuItems.find((mi) => mi.id === orderItem.itemId);
+        if (matchedMenuItem?.ingredients?.length) {
+          for (const recipeLink of matchedMenuItem.ingredients) {
+            const totalDeduction = recipeLink.quantity * orderItem.quantity;
+            await this.prisma.ingredient.updateMany({
+              where: { id: recipeLink.ingredientId },
+              data: { currentStock: { decrement: totalDeduction } },
+            });
+          }
+        }
+      }
+    } catch (invErr) {
+      console.error('Non-fatal inventory deduct error:', invErr);
+    }
+
+    return updated;
   }
 
   async getOrders(tenantId: string, branchId?: string) {

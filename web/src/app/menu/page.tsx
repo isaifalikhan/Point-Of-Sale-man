@@ -7,7 +7,11 @@ type MenuItem = {
   name: string;
   price: number;
   variants?: { name: string; price: number }[];
+  addons?: { name: string; price: number }[];
 };
+
+const PIZZA_TOPPING_NOTE =
+  "Extra toppings — S: Rs 49 · M: Rs 99 · L: Rs 149 · XL: Rs 199";
 
 type MenuCategory = {
   id: string;
@@ -71,7 +75,7 @@ export default async function MenuPage() {
                 <ul className="mt-4 space-y-2">
                   {section.items.map((item) => (
                     <li
-                      key={item.name}
+                      key={item.id}
                       className="flex justify-between gap-4 text-sm text-[#B8B8B8]"
                     >
                       <span className="text-[#F5F5F5]">
@@ -81,6 +85,11 @@ export default async function MenuPage() {
                             {item.variants.map((v) => `${v.name}: ${Rs(v.price)}`).join(" · ")}
                           </span>
                         ) : null}
+                        {item.addons && item.addons.length > 0 ? (
+                          <span className="mt-0.5 block text-xs text-[#B8B8B8]/80">
+                            {item.addons.map((a) => `${a.name}: ${Rs(a.price)}`).join(" · ")}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="shrink-0 font-medium text-[#E7C27D]">
                         {item.variants && item.variants.length > 0 ? "Variants" : Rs(item.price)}
@@ -88,6 +97,9 @@ export default async function MenuPage() {
                     </li>
                   ))}
                 </ul>
+                {(section.name === "Pizza" || section.name === "Pizza Special") && (
+                  <p className="mt-3 text-xs text-[#B8B8B8]/90">{PIZZA_TOPPING_NOTE}</p>
+                )}
               </div>
             ))}
           </div>

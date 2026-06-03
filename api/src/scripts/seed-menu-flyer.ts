@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PIZZA_TOPPING_ADDONS } from './menu-constants';
 
 const prisma = new PrismaClient();
 
@@ -7,14 +8,19 @@ type Product =
   | { name: string; price: number; description?: string }
   | { name: string; variants: VariantMap; description?: string };
 
+type AddonSeed = { name: string; price: number };
+
 type CategorySeed = {
   name: string;
   products: Product[];
+  /** Applied to every item in the category (e.g. pizza extra toppings). */
+  addons?: AddonSeed[];
 };
 
 const MENU: CategorySeed[] = [
   {
     name: 'Pizza',
+    addons: [...PIZZA_TOPPING_ADDONS],
     products: [
       { name: 'Chicken Tikka Pizza', variants: { S: 499, M: 949, L: 1249, XL: 1599 } },
       { name: 'Chicken Fajita Pizza', variants: { S: 499, M: 949, L: 1249, XL: 1599 } },
@@ -29,6 +35,7 @@ const MENU: CategorySeed[] = [
   },
   {
     name: 'Pizza Special',
+    addons: [...PIZZA_TOPPING_ADDONS],
     products: [
       { name: 'Crown Crust', variants: { M: 1199, L: 1499 } },
       { name: 'Kabab Stuffar Pizza', variants: { M: 1299, L: 1599, XL: 1999 } },
@@ -310,6 +317,9 @@ async function main() {
                 })),
               }
             : undefined,
+          addons: cat.addons?.length
+            ? { set: cat.addons.map((a) => ({ name: a.name, price: a.price })) }
+            : undefined,
         },
       });
     }
@@ -318,12 +328,14 @@ async function main() {
   console.log(`Done. Categories: ${MENU.length}`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
 
