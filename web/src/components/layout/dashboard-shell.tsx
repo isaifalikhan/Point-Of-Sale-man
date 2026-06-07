@@ -64,6 +64,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   function handleLogout() {
     localStorage.removeItem('token');
+    localStorage.removeItem('userName');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userPermissions');
     setLogoutConfirmOpen(false);
@@ -197,7 +198,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className="relative flex-1 overflow-auto bg-transparent p-3 sm:p-6 lg:p-8">
+          <main
+            className={cn(
+              'relative flex-1 bg-transparent',
+              isPosMode
+                ? 'flex min-h-0 flex-col overflow-hidden p-0'
+                : 'overflow-auto p-3 sm:p-6 lg:p-8',
+            )}
+          >
             {children}
           </main>
         </div>

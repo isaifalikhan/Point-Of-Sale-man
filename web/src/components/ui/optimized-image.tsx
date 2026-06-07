@@ -16,6 +16,7 @@ interface OptimizedImageProps {
   priority?: boolean;
 }
 
+/** Remote / data URLs use a plain img tag — more reliable in POS cards than next/image fill. */
 export const OptimizedImage = memo(function OptimizedImage({
   src,
   alt,
@@ -27,19 +28,38 @@ export const OptimizedImage = memo(function OptimizedImage({
   fallback,
   priority = false,
 }: OptimizedImageProps) {
-  const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const isDataUrl = src?.startsWith('data:');
-
-  if (hasError || !src) {
+  if (hasError || !src?.trim()) {
     return fallback ? <>{fallback}</> : null;
+  }
+
+  const isDataUrl = src.startsWith('data:');
+  const isRemote = /^https?:\/\//i.test(src);
+
+  if (isRemote || isDataUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={alt}
+        loading={priority ? 'eager' : 'lazy'}
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className={cn(
+          fill ? 'absolute inset-0 h-full w-full object-cover' : '',
+          className,
+        )}
+        onError={() => setHasError(true)}
+      />
+    );
   }
 
   return (
     <>
       {isLoading && (
-        <div className={cn("absolute inset-0 bg-slate-100 animate-pulse", className)} />
+        <div className={cn('absolute inset-0 bg-slate-100 animate-pulse', className)} />
       )}
       <Image
         src={src}
@@ -49,12 +69,9 @@ export const OptimizedImage = memo(function OptimizedImage({
         height={!fill ? height : undefined}
         sizes={sizes}
         priority={priority}
-        // Let Next.js optimize/cache remote images (unsplash, etc.) for faster repeated loads.
-        // Keep data URLs unoptimized since they are already embedded payloads.
-        unoptimized={isDataUrl}
         className={cn(
           className,
-          isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'
+          isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300',
         )}
         onLoad={() => setIsLoading(false)}
         onError={() => {

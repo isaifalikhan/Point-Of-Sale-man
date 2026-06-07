@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { OptimizedImage } from '@/components/ui/optimized-image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Loader2, CheckCircle2, Printer, X } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Loader2, CheckCircle2, Printer, X, ChefHat, Undo2, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { apiClient } from '@/lib/api-client';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -18,6 +18,7 @@ import {
 } from '@/components/pos/delivery-details-fields';
 import { BRAND } from '@/config/brand';
 import { VENUE } from '@/config/venue-public';
+import { imageForCategory } from '@/lib/menu-category-images';
 
 const EMPTY_DELIVERY: DeliveryDetails = { riderName: '', phone: '', address: '' };
 type PaymentMethod = 'CASH' | 'CARD' | 'WALLET' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
@@ -40,12 +41,55 @@ interface MenuItem {
   addons?: { name: string; price: number }[];
 }
 
-interface CartItem {
+type CartLineStatus = 'in_cart' | 'in_kitchen';
+
+interface CartLine {
+  lineId: string;
   item: MenuItem;
   quantity: number;
   variantName?: string;
   addonNames?: string[];
   totalPrice: number;
+  status: CartLineStatus;
+  /** Set after the line is saved on the open kitchen order */
+  orderItemId?: string;
+}
+
+function newCartLineId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `line-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Same menu line identity — avoids duplicate kitchen rows after recall + refresh */
+function cartLineSignature(line: {
+  item: { id: string };
+  variantName?: string;
+  addonNames?: string[];
+}) {
+  return `${line.item.id}|${line.variantName ?? ''}|${JSON.stringify(line.addonNames ?? [])}`;
+}
+
+function orderItemToCartLine(orderItem: any, menuItems: MenuItem[]): CartLine {
+  const menu = menuItems.find((m) => m.id === orderItem.itemId) || orderItem.item;
+  return {
+    lineId: orderItem.id,
+    orderItemId: orderItem.id,
+    item: {
+      id: menu?.id || orderItem.itemId,
+      name: menu?.name || orderItem.item?.name || 'Item',
+      price: menu?.price ?? orderItem.price,
+      image: menu?.image || orderItem.item?.image,
+      categoryId: menu?.categoryId || '',
+      variants: menu?.variants,
+      addons: menu?.addons,
+    },
+    quantity: orderItem.quantity,
+    variantName: orderItem.variantName,
+    addonNames: orderItem.addonNames || [],
+    totalPrice: orderItem.price,
+    status: 'in_kitchen',
+  };
 }
 
 interface ActiveKitchenOrder {
@@ -80,18 +124,14 @@ const MenuItemCard = memo(function MenuItemCard({ item, onClick }: MenuItemCardP
       onClick={() => onClick(item)}
     >
       <div className="h-24 sm:h-40 relative overflow-hidden bg-slate-100">
-        {item.image ? (
-          <OptimizedImage 
-            src={item.image} 
-            alt={item.name} 
-            fill
-            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
-            className="object-cover group-hover:scale-110 transition-transform duration-700"
-            fallback={<ImageFallback />}
-          />
-        ) : (
-          <ImageFallback />
-        )}
+        <OptimizedImage
+          src={item.image || ''}
+          alt={item.name}
+          fill
+          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
+          className="object-cover group-hover:scale-110 transition-transform duration-700"
+          fallback={<ImageFallback />}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2 sm:p-4">
           <span className="text-white text-[8px] sm:text-[10px] font-black uppercase tracking-wider">Add to order</span>
         </div>
@@ -108,21 +148,35 @@ const MenuItemCard = memo(function MenuItemCard({ item, onClick }: MenuItemCardP
 });
 
 interface CartItemRowProps {
-  cartItem: CartItem;
-  index: number;
-  onUpdateQuantity: (idx: number, delta: number) => void;
-  onRemove: (idx: number) => void;
+  cartItem: CartLine;
+  onUpdateQuantity: (lineId: string, delta: number) => void;
+  onRemove: (lineId: string) => void;
+  onSendToKitchen?: (lineId: string) => void;
+  onRecallFromKitchen?: (lineId: string) => void;
+  sending?: boolean;
 }
 
 const CartImageFallback = memo(function CartImageFallback() {
   return <ShoppingCart className="h-4 w-4 opacity-10" />;
 });
 
-const CartItemRow = memo(function CartItemRow({ cartItem, index, onUpdateQuantity, onRemove }: CartItemRowProps) {
-  const { item, quantity, variantName, totalPrice } = cartItem;
-  
+const CartItemRow = memo(function CartItemRow({
+  cartItem,
+  onUpdateQuantity,
+  onRemove,
+  onSendToKitchen,
+  onRecallFromKitchen,
+  sending,
+}: CartItemRowProps) {
+  const { lineId, item, quantity, variantName, totalPrice, status, addonNames } = cartItem;
+  const inKitchen = status === 'in_kitchen';
+
   return (
-    <div className="flex gap-4 p-3 rounded-2xl border border-slate-50 hover:bg-slate-50/50 transition-colors group">
+    <div
+      className={`flex gap-4 p-3 rounded-2xl border transition-colors group ${
+        inKitchen ? 'border-amber-200 bg-amber-50/40' : 'border-slate-50 hover:bg-slate-50/50'
+      }`}
+    >
       <div className="h-14 w-14 rounded-xl overflow-hidden shrink-0 shadow-sm border border-slate-100 bg-slate-50 flex items-center justify-center relative">
         {item.image ? (
           <OptimizedImage 
@@ -142,18 +196,66 @@ const CartItemRow = memo(function CartItemRow({ cartItem, index, onUpdateQuantit
           <div className="truncate pr-2">
             <div className="font-bold text-slate-800 text-sm truncate">{item.name}</div>
             {variantName && <div className="text-[10px] text-indigo-600 font-bold">{variantName}</div>}
+            {addonNames?.map((a) => (
+              <div key={a} className="text-[10px] text-emerald-600 font-semibold">
+                + {a}
+              </div>
+            ))}
+            {inKitchen ? (
+              <div className="text-[9px] font-black uppercase tracking-wider text-amber-700 mt-0.5">
+                Sent to kitchen
+              </div>
+            ) : (
+              <div className="text-[9px] font-black uppercase tracking-wider text-emerald-700 mt-0.5">
+                In basket — tap Kitchen to send
+              </div>
+            )}
           </div>
           <span className="font-black text-slate-900 text-sm">Rs. {(totalPrice * quantity).toFixed(0)}</span>
         </div>
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-1 bg-white border border-slate-100 shadow-sm rounded-full p-0.5">
-            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600" onClick={() => onUpdateQuantity(index, -1)}><Minus className="h-3 w-3" /></Button>
-            <span className="w-5 text-center text-xs font-bold text-slate-800">{quantity}</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600" onClick={() => onUpdateQuantity(index, 1)}><Plus className="h-3 w-3" /></Button>
+        <div className="flex items-center justify-between mt-2 gap-2">
+          {!inKitchen ? (
+            <div className="flex items-center gap-1 bg-white border border-slate-100 shadow-sm rounded-full p-0.5">
+              <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600" onClick={() => onUpdateQuantity(lineId, -1)}><Minus className="h-3 w-3" /></Button>
+              <span className="w-5 text-center text-xs font-bold text-slate-800">{quantity}</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600" onClick={() => onUpdateQuantity(lineId, 1)}><Plus className="h-3 w-3" /></Button>
+            </div>
+          ) : (
+            <span className="text-xs font-bold text-amber-800">Qty {quantity}</span>
+          )}
+          <div className="flex items-center gap-1">
+            {!inKitchen && onSendToKitchen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] font-black uppercase tracking-wide text-amber-700 hover:bg-amber-100"
+                disabled={sending}
+                onClick={() => onSendToKitchen(lineId)}
+              >
+                {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChefHat className="h-3.5 w-3.5 sm:mr-1" />}
+                <span className="hidden sm:inline">Kitchen</span>
+              </Button>
+            )}
+            {inKitchen && onRecallFromKitchen && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] font-black uppercase tracking-wide text-indigo-700 hover:bg-indigo-50"
+                disabled={sending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRecallFromKitchen(lineId);
+                }}
+              >
+                {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3.5 w-3.5 sm:mr-1" />}
+                <span className="hidden sm:inline">Back to basket</span>
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all rounded-full" onClick={() => onRemove(lineId)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all rounded-full" onClick={() => onRemove(index)}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
         </div>
       </div>
     </div>
@@ -166,20 +268,18 @@ export default function POSPage() {
   const [branches, setBranches] = useState<any[]>([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartLines, setCartLines] = useState<CartLine[]>([]);
   const [orderType, setOrderType] = useState<any>('DINE_IN');
   const [loading, setLoading] = useState(true);
-  const [isLocked, setIsLocked] = useState(true);
-  const [pinInput, setPinInput] = useState('');
   const [posUser, setPosUser] = useState<string | null>(null);
-  const [pinError, setPinError] = useState('');
   const [processingOrder, setProcessingOrder] = useState(false);
+  const [sendingLineId, setSendingLineId] = useState<string | null>(null);
 
   const [orderSuccess, setOrderSuccess] = useState<any>(null);
   const [kitchenTicket, setKitchenTicket] = useState<any>(null);
   const [activeKitchenOrder, setActiveKitchenOrder] = useState<ActiveKitchenOrder | null>(null);
   const [checkoutAutoOpened, setCheckoutAutoOpened] = useState(false);
-  
+
   const [tables, setTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
   const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(EMPTY_DELIVERY);
@@ -205,6 +305,13 @@ export default function POSPage() {
   /** Portals must mount on the client so #print-receipt is a direct child of document.body for print CSS. */
   const [printPortalReady, setPrintPortalReady] = useState(false);
 
+  /** Blocks 5s poll from re-adding kitchen rows while send/recall is in flight */
+  const cartSyncPausedRef = useRef(0);
+  const activeKitchenOrderRef = useRef<ActiveKitchenOrder | null>(null);
+  const fetchDataRef = useRef<() => Promise<void>>(async () => {});
+
+  activeKitchenOrderRef.current = activeKitchenOrder;
+
   const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
   const orderRef = useMemo(() => Math.floor(1000 + Math.random() * 9000), []);
@@ -219,9 +326,83 @@ export default function POSPage() {
     return forSize.length ? forSize : toppings;
   }, [selectedItemForModal, selectedVariant]);
 
-  useEffect(() => {
-    fetchData();
+  const fetchData = useCallback(async () => {
+    try {
+      const [catsRes, itemsRes, branchesRes, tablesRes, ordersRes] = await Promise.all([
+        apiClient.get('/menu/categories'),
+        apiClient.get('/menu/items'),
+        apiClient.get('/branches'),
+        apiClient.get('/tables'),
+        apiClient.get('/orders'),
+      ]);
+      const cats = catsRes.data || [];
+      const categoryNameById = Object.fromEntries(cats.map((c: { id: string; name: string }) => [c.id, c.name]));
+      setCategories(cats);
+      setItems(
+        (itemsRes.data || []).map((item: MenuItem) => ({
+          ...item,
+          image:
+            item.image?.trim() ||
+            imageForCategory(categoryNameById[item.categoryId]),
+        })),
+      );
+      setBranches(branchesRes.data);
+      setTables(tablesRes.data);
+
+      // Recover latest unpaid kitchen order so checkout survives refresh/navigation.
+      const unpaidOrders = (ordersRes.data || []).filter((o: any) => {
+        if (o.status === 'CANCELLED') return false;
+        return getOrderPaidAmount(o) < (o.totalAmount || 0);
+      });
+
+      if (unpaidOrders.length > 0) {
+        const activeId = activeKitchenOrderRef.current?.id;
+        const latest = activeId
+          ? unpaidOrders.find((o: { id: string }) => o.id === activeId) ?? unpaidOrders[0]
+          : unpaidOrders[0];
+        setActiveKitchenOrder((prev) => {
+          if (prev && prev.id === latest.id && prev.status === latest.status) return prev;
+          return {
+            id: latest.id,
+            orderNumber: latest.orderNumber,
+            status: latest.status,
+            totalAmount: latest.totalAmount,
+            type: latest.type,
+            table: latest.table,
+          };
+        });
+        if (latest.type === 'DINE_IN' && (latest.tableId || latest.table?.id)) {
+          setSelectedTableId(latest.tableId || latest.table.id);
+        }
+        if (cartSyncPausedRef.current === 0) {
+          setCartLines((prev) => {
+            const inCart = prev.filter((l) => l.status === 'in_cart');
+            const inCartSigs = new Set(inCart.map((l) => cartLineSignature(l)));
+            const fromOrder = (latest.items || [])
+              .map((it: any) => orderItemToCartLine(it, itemsRes.data))
+              .filter((k) => !inCartSigs.has(cartLineSignature(k)));
+            return [...inCart, ...fromOrder];
+          });
+        }
+      }
+    } catch (error) {
+
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  fetchDataRef.current = fetchData;
+
+  useEffect(() => {
+    setPosUser(
+      typeof window !== 'undefined'
+        ? localStorage.getItem('userName') || localStorage.getItem('userRole') || 'Staff'
+        : 'Staff',
+    );
+    fetchData();
+  }, [fetchData]);
 
   useEffect(() => {
     setPrintPortalReady(true);
@@ -277,13 +458,6 @@ export default function POSPage() {
   }, [activeKitchenOrder?.id]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     if (!activeKitchenOrder) return;
     if (activeKitchenOrder.status !== 'COMPLETED') return;
     if (checkoutAutoOpened) return;
@@ -294,47 +468,12 @@ export default function POSPage() {
     setIsPaymentModalOpen(true);
   }, [activeKitchenOrder, checkoutAutoOpened]);
 
-  const fetchData = async () => {
-    try {
-      const [catsRes, itemsRes, branchesRes, tablesRes, ordersRes] = await Promise.all([
-        apiClient.get('/menu/categories'),
-        apiClient.get('/menu/items'),
-        apiClient.get('/branches'),
-        apiClient.get('/tables'),
-        apiClient.get('/orders'),
-      ]);
-      setCategories(catsRes.data);
-      setItems(itemsRes.data);
-      setBranches(branchesRes.data);
-      setTables(tablesRes.data);
-
-      // Recover latest unpaid kitchen order so checkout survives refresh/navigation.
-      const unpaidOrders = (ordersRes.data || []).filter((o: any) => {
-        if (o.status === 'CANCELLED') return false;
-        return getOrderPaidAmount(o) < (o.totalAmount || 0);
-      });
-
-      if (unpaidOrders.length > 0) {
-        const latest = unpaidOrders[0];
-        setActiveKitchenOrder((prev) => {
-          if (prev && prev.id === latest.id && prev.status === latest.status) return prev;
-          return {
-            id: latest.id,
-            orderNumber: latest.orderNumber,
-            status: latest.status,
-            totalAmount: latest.totalAmount,
-            type: latest.type,
-            table: latest.table,
-          };
-        });
-      }
-    } catch (error) {
-
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchDataRef.current();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const addToCart = useCallback((item: MenuItem, variantName?: string, addonNames?: string[]) => {
     let finalPrice = item.price;
@@ -347,21 +486,18 @@ export default function POSPage() {
       finalPrice += extras.reduce((sum, a) => sum + a.price, 0);
     }
 
-    setCart(prev => {
-      const existing = prev.find(p => 
-        p.item.id === item.id && 
-        p.variantName === variantName && 
-        JSON.stringify(p.addonNames) === JSON.stringify(addonNames)
-      );
-
-      if (existing) {
-        return prev.map(p => 
-          (p.item.id === item.id && p.variantName === variantName && JSON.stringify(p.addonNames) === JSON.stringify(addonNames)) 
-          ? { ...p, quantity: p.quantity + 1 } : p
-        );
-      }
-      return [...prev, { item, quantity: 1, variantName, addonNames, totalPrice: finalPrice }];
-    });
+    setCartLines((prev) => [
+      ...prev,
+      {
+        lineId: newCartLineId(),
+        item,
+        quantity: 1,
+        variantName,
+        addonNames,
+        totalPrice: finalPrice,
+        status: 'in_cart',
+      },
+    ]);
     
     setSelectedItemForModal(null);
   }, []);
@@ -376,21 +512,32 @@ export default function POSPage() {
     }
   }, [addToCart]);
 
-  const orderItemsPayload = useCallback(
-    () =>
-      cart.map((c) => ({
-        itemId: c.item.id,
-        quantity: c.quantity,
-        variantName: c.variantName,
-        addonNames: c.addonNames,
-      })),
-    [cart],
-  );
+  const lineToPayload = (line: CartLine) => ({
+    itemId: line.item.id,
+    quantity: line.quantity,
+    variantName: line.variantName,
+    addonNames: line.addonNames,
+  });
+
+  const syncActiveOrder = (order: any) => {
+    if (!order) {
+      setActiveKitchenOrder(null);
+      return;
+    }
+    setActiveKitchenOrder({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      type: order.type,
+      table: order.table,
+    });
+  };
 
   const printKitchenSlip = useCallback(
     (
       orderNumber: string,
-      items: CartItem[],
+      items: CartLine[],
       type: string,
       tableName: string,
       delivery: DeliveryDetails | null,
@@ -409,8 +556,9 @@ export default function POSPage() {
     [],
   );
 
-  const sendToKitchen = async () => {
-    if (cart.length === 0 || branches.length === 0) return;
+  const sendLineToKitchen = async (lineId: string) => {
+    const line = cartLines.find((l) => l.lineId === lineId && l.status === 'in_cart');
+    if (!line || branches.length === 0) return;
 
     if (!activeKitchenOrder) {
       if (orderType === 'DINE_IN' && !selectedTableId) {
@@ -423,49 +571,21 @@ export default function POSPage() {
       }
     }
 
-    const cartSnapshot = [...cart];
-    setProcessingOrder(true);
+    setSendingLineId(lineId);
+    cartSyncPausedRef.current += 1;
     try {
+      let order: any;
       if (activeKitchenOrder) {
         const updated = await apiClient.patch(`/orders/${activeKitchenOrder.id}/items`, {
-          items: orderItemsPayload(),
+          items: [lineToPayload(line)],
         });
-
-        setActiveKitchenOrder({
-          id: updated.data.id,
-          orderNumber: updated.data.orderNumber,
-          status: updated.data.status,
-          totalAmount: updated.data.totalAmount,
-          type: updated.data.type,
-          table: updated.data.table,
-        });
-        if (updated.data.status !== 'COMPLETED') {
-          setCheckoutAutoOpened(false);
-          setIsPaymentModalOpen(false);
-        }
-
-        printKitchenSlip(
-          updated.data.orderNumber,
-          cartSnapshot,
-          updated.data.type,
-          updated.data.type === 'DINE_IN'
-            ? updated.data.table?.name || activeKitchenOrder.table?.name || 'N/A'
-            : 'N/A',
-          updated.data.type === 'DELIVERY'
-            ? {
-                riderName: updated.data.deliveryRiderName || '',
-                phone: updated.data.deliveryPhone || '',
-                address: updated.data.deliveryAddress || '',
-              }
-            : null,
-          true,
-        );
+        order = updated.data;
       } else {
         const created = await apiClient.post('/orders', {
           type: orderType,
           branchId: branches[0].id,
           tableId: orderType === 'DINE_IN' && selectedTableId ? selectedTableId : undefined,
-          items: orderItemsPayload(),
+          items: [lineToPayload(line)],
           ...(orderType === 'DELIVERY'
             ? {
                 deliveryRiderName: deliveryDetails.riderName.trim(),
@@ -474,42 +594,128 @@ export default function POSPage() {
               }
             : {}),
         });
-
-        setActiveKitchenOrder({
-          id: created.data.id,
-          orderNumber: created.data.orderNumber,
-          status: created.data.status,
-          totalAmount: created.data.totalAmount,
-          type: created.data.type,
-          table: created.data.table,
-        });
+        order = created.data;
         setCheckoutAutoOpened(false);
-
-        printKitchenSlip(
-          created.data.orderNumber,
-          cartSnapshot,
-          orderType,
-          orderType === 'DINE_IN'
-            ? tables.find((t) => t.id === selectedTableId)?.name || 'N/A'
-            : 'N/A',
-          orderType === 'DELIVERY'
-            ? {
-                riderName: deliveryDetails.riderName.trim(),
-                phone: deliveryDetails.phone.trim(),
-                address: deliveryDetails.address.trim(),
-              }
-            : null,
-        );
       }
 
-      setCart([]);
+      syncActiveOrder(order);
+      if (order.status !== 'COMPLETED') {
+        setCheckoutAutoOpened(false);
+        setIsPaymentModalOpen(false);
+      }
+
+      const savedItem = order.items[order.items.length - 1];
+      setCartLines((prev) =>
+        prev.map((l) =>
+          l.lineId === lineId
+            ? {
+                ...l,
+                status: 'in_kitchen' as const,
+                orderItemId: savedItem?.id,
+              }
+            : l,
+        ),
+      );
+
+      printKitchenSlip(
+        order.orderNumber,
+        [line],
+        order.type,
+        order.type === 'DINE_IN'
+          ? order.table?.name || tables.find((t) => t.id === selectedTableId)?.name || 'N/A'
+          : 'N/A',
+        order.type === 'DELIVERY'
+          ? {
+              riderName: order.deliveryRiderName || deliveryDetails.riderName,
+              phone: order.deliveryPhone || deliveryDetails.phone,
+              address: order.deliveryAddress || deliveryDetails.address,
+            }
+          : null,
+        !!activeKitchenOrder,
+      );
     } catch (error) {
-      console.error('Kitchen ticket failed:', error);
-      alert('Failed to send order to kitchen.');
+      console.error('Kitchen send failed:', error);
+      alert('Failed to send this item to kitchen.');
     } finally {
-      setProcessingOrder(false);
+      cartSyncPausedRef.current = Math.max(0, cartSyncPausedRef.current - 1);
+      setSendingLineId(null);
     }
   };
+
+  const recallLineFromKitchen = useCallback(
+    async (lineId: string) => {
+      const line = cartLines.find(
+        (l) =>
+          l.status === 'in_kitchen' &&
+          (l.lineId === lineId || l.orderItemId === lineId),
+      );
+
+      if (!line) {
+        alert('Item not found in kitchen queue.');
+        return;
+      }
+      if (!activeKitchenOrder) {
+        alert('No active kitchen order.');
+        return;
+      }
+
+      const orderItemId = line.orderItemId;
+      if (!orderItemId) {
+        alert('This item is not linked to the order yet.');
+        return;
+      }
+
+      const stableLineId = line.lineId;
+      const snapshot = { ...line };
+
+      setIsPaymentModalOpen(false);
+      setCheckoutAutoOpened(true);
+      setSendingLineId(stableLineId);
+      cartSyncPausedRef.current += 1;
+
+      // Move to basket immediately so the row leaves "With kitchen"
+      setCartLines((prev) => {
+        const sig = cartLineSignature(line);
+        const withoutDupes = prev.filter(
+          (l) =>
+            !(
+              l.status === 'in_kitchen' &&
+              l.lineId !== stableLineId &&
+              cartLineSignature(l) === sig
+            ),
+        );
+        return withoutDupes.map((l) =>
+          l.lineId === stableLineId
+            ? { ...l, status: 'in_cart' as const, orderItemId: undefined }
+            : l,
+        );
+      });
+
+      try {
+        const res = await apiClient.delete(
+          `/orders/${activeKitchenOrder.id}/items/${orderItemId}`,
+        );
+
+        if (res.data === null) {
+          setActiveKitchenOrder(null);
+          setCheckoutAutoOpened(false);
+        } else if (res.data) {
+          syncActiveOrder(res.data);
+        }
+      } catch (error: any) {
+        console.error('Recall from kitchen failed:', error);
+        setCartLines((prev) => {
+          const back = prev.filter((l) => l.lineId !== stableLineId);
+          return [...back, { ...snapshot, status: 'in_kitchen' as const, orderItemId }];
+        });
+        alert(error?.response?.data?.message || 'Could not move this item back to the cart.');
+      } finally {
+        cartSyncPausedRef.current = Math.max(0, cartSyncPausedRef.current - 1);
+        setSendingLineId(null);
+      }
+    },
+    [cartLines, activeKitchenOrder],
+  );
 
   const finalizeOrder = async (paymentsArray: {amount: number, method: PaymentMethod}[]) => {
     if (!activeKitchenOrder) return;
@@ -549,6 +755,7 @@ export default function POSPage() {
 
       setOrderSuccess(orderSnapshot);
       setActiveKitchenOrder(null);
+      setCartLines([]);
       setCheckoutAutoOpened(false);
       setIsPaymentModalOpen(false);
       setAmountTendered('');
@@ -564,23 +771,28 @@ export default function POSPage() {
     }
   };
 
-  const updateQuantity = useCallback((idx: number, delta: number) => {
-    setCart(prev => prev.map((p, i) => {
-      if (i === idx) {
+  const updateQuantity = useCallback((lineId: string, delta: number) => {
+    setCartLines((prev) =>
+      prev.map((p) => {
+        if (p.lineId !== lineId || p.status !== 'in_cart') return p;
         const newQ = p.quantity + delta;
         return newQ > 0 ? { ...p, quantity: newQ } : p;
-      }
-      return p;
-    }));
+      }),
+    );
   }, []);
 
-  const removeFromCart = useCallback((idx: number) => {
-    setCart(prev => prev.filter((_, i) => i !== idx));
-  }, []);
+  const linesInCart = useMemo(
+    () => cartLines.filter((l) => l.status === 'in_cart'),
+    [cartLines],
+  );
+  const linesInKitchen = useMemo(
+    () => cartLines.filter((l) => l.status === 'in_kitchen'),
+    [cartLines],
+  );
 
-  const subtotal = useMemo(() => 
-    cart.reduce((sum, p) => sum + (p.totalPrice * p.quantity), 0), 
-    [cart]
+  const subtotal = useMemo(
+    () => cartLines.reduce((sum, p) => sum + p.totalPrice * p.quantity, 0),
+    [cartLines],
   );
   const payableTotal = activeKitchenOrder?.totalAmount ?? subtotal;
 
@@ -591,7 +803,6 @@ export default function POSPage() {
     };
 
     return tables
-      .filter((t) => t.status === 'AVAILABLE')
       .slice()
       .sort((a, b) => {
         const diff = tableNumber(a.name) - tableNumber(b.name);
@@ -600,12 +811,177 @@ export default function POSPage() {
       });
   }, [tables]);
 
-  const filteredItems = useMemo(() => 
-    items.filter(item => 
-      (activeCategory === 'All' || item.categoryId === activeCategory) &&
-      item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-    ),
-    [items, activeCategory, debouncedSearchQuery]
+  const filteredItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          (activeCategory === 'All' || item.categoryId === activeCategory) &&
+          item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()),
+      ),
+    [items, activeCategory, debouncedSearchQuery],
+  );
+
+  const removeLine = useCallback(
+    async (lineId: string) => {
+      const line = cartLines.find((l) => l.lineId === lineId);
+      if (!line) return;
+      if (line.status === 'in_kitchen' && line.orderItemId && activeKitchenOrder) {
+        setSendingLineId(lineId);
+        try {
+          const res = await apiClient.delete(
+            `/orders/${activeKitchenOrder.id}/items/${line.orderItemId}`,
+          );
+          if (res.data) syncActiveOrder(res.data);
+          else {
+            setActiveKitchenOrder(null);
+            setCheckoutAutoOpened(false);
+          }
+          setCartLines((prev) => prev.filter((l) => l.lineId !== lineId));
+        } catch (error) {
+          console.error('Remove kitchen item failed:', error);
+          alert('Could not remove this item.');
+        } finally {
+          setSendingLineId(null);
+        }
+        return;
+      }
+      setCartLines((prev) => prev.filter((l) => l.lineId !== lineId));
+    },
+    [cartLines, activeKitchenOrder],
+  );
+
+  const renderCartSections = (compact?: boolean) => (
+    <>
+      {linesInCart.length > 0 && (
+        <div
+          className={`${compact ? 'space-y-2' : 'space-y-3'} rounded-xl border-2 border-emerald-200/80 bg-emerald-50/30 p-2`}
+        >
+          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 px-1">
+            In basket ({linesInCart.length})
+          </p>
+          {linesInCart.map((p) => (
+            <CartItemRow
+              key={p.lineId}
+              cartItem={p}
+              onUpdateQuantity={updateQuantity}
+              onRemove={removeLine}
+              onSendToKitchen={sendLineToKitchen}
+              sending={sendingLineId === p.lineId}
+            />
+          ))}
+        </div>
+      )}
+      {linesInKitchen.length > 0 && (
+        <div
+          className={`${compact ? 'space-y-2 mt-4' : 'space-y-3 mt-4'} rounded-xl border-2 border-amber-200/80 bg-amber-50/40 p-2`}
+        >
+          <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 px-1">
+            With kitchen ({linesInKitchen.length})
+          </p>
+          {linesInKitchen.map((p) => (
+            <CartItemRow
+              key={p.lineId}
+              cartItem={p}
+              onUpdateQuantity={updateQuantity}
+              onRemove={removeLine}
+              onRecallFromKitchen={recallLineFromKitchen}
+              sending={sendingLineId === p.lineId}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  const renderTableSelect = (className?: string) => (
+    <div className={className}>
+      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1 flex items-center gap-1">
+        <MapPin className="h-3 w-3 text-indigo-600" />
+        Select table (required for dine-in)
+      </label>
+      <select
+        className={`flex h-10 w-full items-center rounded-lg border bg-white px-3 py-2 text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+          selectedTableId ? 'border-indigo-300' : 'border-amber-400 ring-1 ring-amber-200'
+        }`}
+        value={selectedTableId}
+        onChange={(e) => setSelectedTableId(e.target.value)}
+      >
+        <option value="">Choose a table…</option>
+        {availableTables.map((t) => {
+          const isAvailable = t.status === 'AVAILABLE';
+          const isCurrent = t.id === selectedTableId;
+          const canPick = isAvailable || (!!activeKitchenOrder && isCurrent);
+          return (
+            <option key={t.id} value={t.id} disabled={!canPick}>
+              {t.name} ({t.capacity} seats)
+              {isAvailable ? '' : isCurrent ? ' — your table' : ' — in use'}
+            </option>
+          );
+        })}
+      </select>
+      {!selectedTableId && (
+        <p className="text-[10px] text-amber-700 font-bold mt-1">Pick a table before sending items to kitchen.</p>
+      )}
+    </div>
+  );
+
+  const renderCartFooter = () => (
+    <div className="shrink-0 border-t border-slate-100 bg-slate-50/95 backdrop-blur-sm">
+      <div className="max-h-[min(48vh,22rem)] overflow-y-auto overscroll-contain custom-scrollbar p-3 sm:p-4 space-y-3">
+        {orderType === 'DINE_IN' && renderTableSelect()}
+
+        {orderType === 'DELIVERY' && (
+          <DeliveryDetailsFields
+            variant="compact"
+            value={deliveryDetails}
+            onChange={setDeliveryDetails}
+          />
+        )}
+
+        <div className="flex justify-between items-center text-lg sm:text-xl font-black text-slate-900 pt-1">
+          <span className="tracking-tighter">Total</span>
+          <span className="text-primary truncate ml-2">
+            Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}
+          </span>
+        </div>
+
+        {activeKitchenOrder && (
+          <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs">
+            <p className="font-black uppercase tracking-widest text-slate-500">Open order</p>
+            <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800">
+              #{activeKitchenOrder.orderNumber}
+            </p>
+            <p className="mt-1 font-semibold text-slate-800">
+              {activeKitchenOrder.status === 'COMPLETED'
+                ? 'Ready for checkout'
+                : `Kitchen: ${activeKitchenOrder.status}`}
+            </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Tap Kitchen on each basket line to send separately
+            </p>
+          </div>
+        )}
+      </div>
+
+      {activeKitchenOrder && (
+        <div className="p-3 sm:p-4 pt-0 border-t border-slate-100/80 bg-slate-50/95 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button
+            className="h-12 sm:h-14 w-full font-black text-xs sm:text-sm uppercase tracking-widest premium-gradient shadow-lg border-none rounded-xl"
+            disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+            onClick={() => {
+              setMobileCartOpen(false);
+              setPaymentMode('FULL');
+              setAmountTendered('');
+              setIsPaymentModalOpen(true);
+            }}
+          >
+            {activeKitchenOrder.status === 'COMPLETED'
+              ? 'Proceed to Checkout'
+              : 'Checkout when kitchen is done'}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 
   if (loading) {
@@ -617,72 +993,10 @@ export default function POSPage() {
     );
   }
 
-  const handlePinSubmit = async () => {
-    if (pinInput.length < 4) return;
-    try {
-      setLoading(true);
-      const res = await apiClient.post('/auth/staff/login-pin', { pin: pinInput });
-      localStorage.setItem('token', res.data.accessToken);
-      localStorage.setItem('userRole', res.data.user?.role || 'Staff');
-      localStorage.setItem(
-        'userPermissions',
-        JSON.stringify(res.data.user?.permissions ?? []),
-      );
-      setPosUser(res.data.user?.name || 'Staff');
-      setIsLocked(false);
-      setPinError('');
-    } catch (error) {
-      setPinError('Invalid PIN code. Try again.');
-      setPinInput('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (isLocked) {
-    return (
-      <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center p-4">
-         <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full flex flex-col items-center">
-            <div className="h-16 w-16 bg-indigo-100 rounded-full flex items-center justify-center mb-6">
-               <CreditCard className="h-8 w-8 text-indigo-600" />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 mb-2">Unlock Terminal</h2>
-            <p className="text-slate-500 text-sm font-bold tracking-widest uppercase mb-8 text-center">Enter 4-Digit Staff PIN</p>
-            
-            <div className="flex gap-4 mb-8">
-               {[0,1,2,3].map(i => (
-                 <div key={i} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-2xl font-black ${pinInput.length > i ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-50 border-slate-200'}`}>
-                    {pinInput.length > i && <div className="w-3 h-3 bg-white rounded-full"></div>}
-                 </div>
-               ))}
-            </div>
-            {pinError && <p className="text-rose-500 text-sm font-bold mb-4">{pinError}</p>}
-
-            <div className="grid grid-cols-3 gap-4 w-full mb-6">
-               {[1,2,3,4,5,6,7,8,9].map(num => (
-                 <Button key={num} variant="outline" className="h-16 text-2xl font-black rounded-2xl hover:bg-slate-100 border-slate-200" onClick={() => setPinInput(p => (p.length < 4 ? p + num : p))}>
-                   {num}
-                 </Button>
-               ))}
-               <Button variant="ghost" className="h-16 text-xl font-black rounded-2xl text-slate-400" onClick={() => setPinInput('')}>C</Button>
-               <Button variant="outline" className="h-16 text-2xl font-black rounded-2xl hover:bg-slate-100 border-slate-200" onClick={() => setPinInput(p => (p.length < 4 ? p + '0' : p))}>0</Button>
-               <Button variant="ghost" className="h-16 rounded-2xl text-slate-400 hover:text-rose-500 hover:bg-rose-50" onClick={() => setPinInput(p => p.slice(0, -1))}><Minus className="h-6 w-6" /></Button>
-            </div>
-            <Button className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-lg font-black uppercase tracking-widest rounded-2xl" disabled={pinInput.length !== 4 || loading} onClick={handlePinSubmit}>
-               {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : 'Unlock System'}
-            </Button>
-         </div>
-         <div className="mt-8 text-slate-500 text-xs font-bold uppercase tracking-widest">
-            RestoOS Premium POS Enterprise System
-         </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] -m-3 sm:-m-6 overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-background">
       {/* Items Section */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50/30">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-50/30">
         <div className="bg-white/80 backdrop-blur-md p-2 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4 sticky top-0 z-10 shrink-0">
           <div className="flex bg-slate-100/80 p-0.5 sm:p-1 rounded-full border border-slate-200/50 overflow-x-auto no-scrollbar">
              {['DINE_IN', 'TAKEAWAY', 'DELIVERY'].map(t => (
@@ -708,6 +1022,22 @@ export default function POSPage() {
             />
           </div>
         </div>
+
+        {orderType === 'DINE_IN' && (
+          <div className="px-2 sm:px-4 py-2 sm:py-3 border-b border-indigo-100 bg-indigo-50/80 shrink-0">
+            {renderTableSelect('max-w-xl')}
+          </div>
+        )}
+
+        {orderType === 'DELIVERY' && (
+          <div className="px-2 sm:px-4 py-2 sm:py-3 border-b border-indigo-100 bg-indigo-50/60 shrink-0 lg:hidden">
+            <DeliveryDetailsFields
+              variant="compact"
+              value={deliveryDetails}
+              onChange={setDeliveryDetails}
+            />
+          </div>
+        )}
         
         <div className="p-2 sm:p-4 overflow-x-auto shrink-0 border-b bg-white no-scrollbar">
           <div className="flex gap-1.5 sm:gap-2">
@@ -733,7 +1063,7 @@ export default function POSPage() {
           </div>
         </div>
 
-        <div className="flex-1 p-3 sm:p-6 overflow-y-auto custom-scrollbar pb-20 lg:pb-6">
+        <div className="flex-1 min-h-0 p-3 sm:p-6 overflow-y-auto custom-scrollbar pb-28 lg:pb-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-6">
             {filteredItems.map(item => (
               <MenuItemCard key={item.id} item={item} onClick={onItemClick} />
@@ -743,7 +1073,7 @@ export default function POSPage() {
       </div>
 
       {/* Desktop Cart Sidebar */}
-      <div className="hidden lg:flex w-[380px] bg-white border-l shadow-xl flex-col shrink-0 relative">
+      <div className="hidden lg:flex w-[min(100%,360px)] xl:w-[380px] h-full min-h-0 bg-white border-l shadow-xl flex-col shrink-0 relative">
         {orderSuccess && (
           <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
              <div className="h-20 w-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 scale-up">
@@ -754,7 +1084,7 @@ export default function POSPage() {
           </div>
         )}
 
-        <div className="p-5 premium-gradient flex items-center gap-3 shadow-lg">
+        <div className="p-4 xl:p-5 premium-gradient flex items-center gap-3 shadow-lg shrink-0">
           <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
             <ShoppingCart className="h-5 w-5 text-white" />
           </div>
@@ -762,226 +1092,111 @@ export default function POSPage() {
             <h2 className="font-bold text-white text-lg leading-none">Order Basket</h2>
             <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest mt-1">Ref: #POS-{orderRef}</p>
           </div>
-          <span className="ml-auto bg-white text-primary px-3 py-1 rounded-full text-xs font-black shadow-sm">{cart.length}</span>
+          <span className="ml-auto bg-white text-primary px-3 py-1 rounded-full text-xs font-black shadow-sm">
+            {linesInCart.length + linesInKitchen.length}
+          </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-4 p-8 text-center">
-              <div className="h-24 w-24 rounded-full bg-slate-50 flex items-center justify-center border-2 border-dashed border-slate-100">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 xl:p-4 space-y-4 custom-scrollbar">
+          {cartLines.length === 0 ? (
+            <div className="h-full min-h-[8rem] flex flex-col items-center justify-center text-slate-300 space-y-4 p-6 text-center">
+              <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center border-2 border-dashed border-slate-100">
                 <ShoppingCart className="h-10 w-10 opacity-20" />
               </div>
               <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Your basket is currently empty</p>
+              <p className="text-[10px] text-slate-400">Tap Kitchen on each line to send separately</p>
             </div>
           ) : (
-            cart.map((p, i) => (
-              <CartItemRow
-                key={`${p.item.id}-${p.variantName || ''}-${i}`}
-                cartItem={p}
-                index={i}
-                onUpdateQuantity={updateQuantity}
-                onRemove={removeFromCart}
-              />
-            ))
+            renderCartSections()
           )}
         </div>
 
-        <div className="bg-slate-50/80 backdrop-blur-md p-6 border-t border-slate-100 mt-auto">
-          {orderType === 'DINE_IN' && (
-             <div className="mb-4">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Assign Table</label>
-                <select 
-                  className="flex h-10 w-full items-center justify-between whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                  value={selectedTableId}
-                  onChange={(e) => setSelectedTableId(e.target.value)}
-                >
-                  <option value="" disabled>Select an available table...</option>
-                  {availableTables.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.capacity} seats)</option>
-                  ))}
-                  {availableTables.length === 0 && <option value="" disabled>No tables available</option>}
-                </select>
-             </div>
+        {renderCartFooter()}
+      </div>
+
+      {/* Mobile / tablet: sticky actions so checkout & basket stay visible (delivery rider flow) */}
+      <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/90 bg-white/95 backdrop-blur-md px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+        <div className="flex gap-2 max-w-lg mx-auto">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 flex-1 font-bold text-xs sm:text-sm rounded-xl border-slate-200"
+            onClick={() => setMobileCartOpen(true)}
+          >
+            <ShoppingCart className="h-4 w-4 mr-1.5 shrink-0" />
+            Basket ({linesInCart.length + linesInKitchen.length})
+          </Button>
+          {activeKitchenOrder && (
+            <Button
+              type="button"
+              className="h-11 flex-1 font-black text-xs sm:text-sm uppercase tracking-wide premium-gradient rounded-xl border-none shadow-md"
+              disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+              onClick={() => {
+                setMobileCartOpen(false);
+                setPaymentMode('FULL');
+                setAmountTendered('');
+                setIsPaymentModalOpen(true);
+              }}
+            >
+              {activeKitchenOrder.status === 'COMPLETED' ? 'Checkout' : 'Awaiting kitchen'}
+            </Button>
           )}
-
-          {orderType === 'DELIVERY' && (
-            <div className="mb-4">
-              <DeliveryDetailsFields
-                variant="compact"
-                value={deliveryDetails}
-                onChange={setDeliveryDetails}
-              />
-            </div>
-          )}
-
-          <div className="space-y-3 mb-6">
-            <div className="flex justify-between text-2xl font-black text-slate-900 pt-4">
-              <span className="tracking-tighter">TOTAL</span>
-              <span className="text-primary truncate ml-2">
-                Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid gap-3">
-             {activeKitchenOrder && (
-               <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                 <p className="font-black uppercase tracking-widest text-slate-500">Open order</p>
-                 <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">
-                   #{activeKitchenOrder.orderNumber}
-                 </p>
-                 <p className="mt-1 font-semibold text-slate-800">
-                   {activeKitchenOrder.status === 'COMPLETED' ? 'Ready for checkout' : `Kitchen: ${activeKitchenOrder.status}`}
-                 </p>
-                 <p className="mt-1 text-slate-500">
-                   {activeKitchenOrder.type === 'DINE_IN'
-                     ? `Table: ${activeKitchenOrder.table?.name || 'N/A'}`
-                     : activeKitchenOrder.type === 'DELIVERY'
-                       ? 'Delivery order'
-                       : 'Takeaway order'}
-                 </p>
-                 <p className="mt-1 text-[10px] text-slate-400">Add more items to the cart, then send again.</p>
-               </div>
-             )}
-             <Button
-               className="h-14 font-black text-sm uppercase tracking-widest bg-amber-600 hover:bg-amber-700 shadow-lg border-none rounded-2xl w-full"
-               disabled={
-                 cart.length === 0 ||
-                 processingOrder ||
-                 (!activeKitchenOrder &&
-                   ((orderType === 'DINE_IN' && !selectedTableId) ||
-                     (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))))
-               }
-               onClick={sendToKitchen}
-             >
-               {processingOrder ? (
-                 <Loader2 className="h-5 w-5 animate-spin" />
-               ) : activeKitchenOrder ? (
-                 'Send more to Kitchen'
-               ) : (
-                 'Send to Kitchen'
-               )}
-             </Button>
-             {activeKitchenOrder && (
-               <Button
-                 className="h-14 font-black text-sm uppercase tracking-widest premium-gradient shadow-lg shadow-indigo-100 border-none rounded-2xl w-full"
-                 disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
-                 onClick={() => {
-                   setPaymentMode('FULL');
-                   setAmountTendered('');
-                   setIsPaymentModalOpen(true);
-                 }}
-               >
-                 {activeKitchenOrder.status === 'COMPLETED'
-                   ? 'Proceed to Checkout'
-                   : `Checkout after kitchen marks done`}
-               </Button>
-             )}
-          </div>
         </div>
       </div>
 
       {/* Mobile Cart Button */}
       <button
         onClick={() => setMobileCartOpen(true)}
-        className="lg:hidden fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full premium-gradient shadow-xl flex items-center justify-center"
+        className="lg:hidden fixed bottom-[4.75rem] right-4 z-50 h-14 w-14 rounded-full premium-gradient shadow-xl flex items-center justify-center"
+        aria-label="Open basket"
       >
         <ShoppingCart className="h-6 w-6 text-white" />
-        {cart.length > 0 && (
+        {linesInCart.length > 0 && (
           <span className="absolute -top-1 -right-1 h-6 w-6 bg-rose-500 text-white text-xs font-black rounded-full flex items-center justify-center">
-            {cart.length}
+            {linesInCart.length}
           </span>
         )}
       </button>
 
       {/* Mobile Cart Sheet */}
       <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
-        <SheetContent side="right" className="w-full sm:w-[400px] p-0 flex flex-col">
-          <SheetHeader className="p-4 premium-gradient">
-            <SheetTitle className="text-white flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Order Basket ({cart.length})
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-md p-0 gap-0 flex flex-col h-[100dvh] max-h-[100dvh] min-h-0 overflow-hidden"
+        >
+          <SheetHeader className="p-4 premium-gradient shrink-0">
+            <SheetTitle className="text-white flex items-center gap-2 text-base">
+              <ShoppingCart className="h-5 w-5 shrink-0" />
+              Basket ({linesInCart.length + linesInKitchen.length})
             </SheetTitle>
           </SheetHeader>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-4 p-8 text-center">
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+            {cartLines.length === 0 ? (
+              <div className="min-h-[10rem] flex flex-col items-center justify-center text-slate-300 space-y-3 p-6 text-center">
                 <ShoppingCart className="h-12 w-12 opacity-20" />
                 <p className="font-bold text-slate-400">Your basket is empty</p>
               </div>
             ) : (
-              cart.map((p, i) => (
-                <CartItemRow
-                  key={`mobile-${p.item.id}-${p.variantName || ''}-${i}`}
-                  cartItem={p}
-                  index={i}
-                  onUpdateQuantity={updateQuantity}
-                  onRemove={removeFromCart}
-                />
-              ))
+              renderCartSections(true)
             )}
           </div>
 
-          <div className="bg-slate-50 p-4 border-t mt-auto">
-            {orderType === 'DELIVERY' && (
-              <div className="mb-4">
-                <DeliveryDetailsFields
-                  variant="compact"
-                  value={deliveryDetails}
-                  onChange={setDeliveryDetails}
-                />
-              </div>
-            )}
-            <div className="flex justify-between text-xl font-black text-slate-900 mb-4">
-              <span>TOTAL</span>
-              <span className="text-primary">Rs. {(activeKitchenOrder?.totalAmount ?? subtotal).toFixed(0)}</span>
-            </div>
-            <Button
-              className="w-full h-14 font-black uppercase tracking-widest bg-amber-600 hover:bg-amber-700 rounded-xl"
-              disabled={
-                cart.length === 0 ||
-                processingOrder ||
-                (!activeKitchenOrder &&
-                  ((orderType === 'DINE_IN' && !selectedTableId) ||
-                    (orderType === 'DELIVERY' && !isDeliveryDetailsValid(deliveryDetails))))
-              }
-              onClick={async () => {
-                setMobileCartOpen(false);
-                await sendToKitchen();
-              }}
-            >
-              {processingOrder ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : activeKitchenOrder ? (
-                'Send more to Kitchen'
-              ) : (
-                'Send to Kitchen'
-              )}
-            </Button>
-            {activeKitchenOrder && (
-              <Button
-                className="w-full h-14 mt-2 font-black uppercase tracking-widest premium-gradient rounded-xl"
-                disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
-                onClick={() => {
-                  setMobileCartOpen(false);
-                  setPaymentMode('FULL');
-                  setAmountTendered('');
-                  setIsPaymentModalOpen(true);
-                }}
-              >
-                {activeKitchenOrder.status === 'COMPLETED'
-                  ? 'Proceed to Checkout'
-                  : 'Checkout after kitchen marks done'}
-              </Button>
-            )}
-          </div>
+          {renderCartFooter()}
         </SheetContent>
       </Sheet>
 
       {/* Payment Processing Modal */}
-      <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog
+        open={isPaymentModalOpen}
+        onOpenChange={(open) => {
+          setIsPaymentModalOpen(open);
+          if (!open) {
+            setCheckoutAutoOpened(true);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px] max-h-[min(92dvh,640px)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">Payment Processing</DialogTitle>
           </DialogHeader>

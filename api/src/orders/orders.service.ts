@@ -223,6 +223,61 @@ export class OrdersService {
     return updated;
   }
 
+  async removeOrderItem(tenantId: string, orderId: string, orderItemId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, branch: { tenantId } },
+      include: { payments: true, items: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status === 'CANCELLED') {
+      throw new BadRequestException('Cannot modify a cancelled order');
+    }
+
+    const alreadyPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+    if (alreadyPaid >= order.totalAmount) {
+      throw new BadRequestException('Order is already paid');
+    }
+
+    const line = order.items.find((i) => i.id === orderItemId);
+    if (!line) {
+      throw new NotFoundException('Order item not found');
+    }
+
+    await this.prisma.orderItem.delete({ where: { id: orderItemId } });
+
+    const remaining = order.items.filter((i) => i.id !== orderItemId);
+    const newTotal = remaining.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+    if (remaining.length === 0) {
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED', totalAmount: 0, completedAt: null },
+      });
+      if (order.type === 'DINE_IN' && order.tableId) {
+        await this.prisma.table.update({
+          where: { id: order.tableId },
+          data: { status: 'AVAILABLE' },
+        });
+      }
+      return null;
+    }
+
+    const reopenKitchen = order.status === 'COMPLETED';
+
+    return this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        totalAmount: newTotal,
+        ...(reopenKitchen ? { status: 'PENDING', completedAt: null } : {}),
+      },
+      include: this.orderInclude(),
+    });
+  }
+
   async getOrders(tenantId: string, branchId?: string) {
     return this.prisma.order.findMany({
       where: {
@@ -339,16 +394,37 @@ export class OrdersService {
   async updateOrderItemStatus(tenantId: string, orderId: string, itemId: string, status: any) {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, branch: { tenantId } },
+      include: { items: true },
     });
 
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
-    return this.prisma.orderItem.update({
+    await this.prisma.orderItem.update({
       where: { id: itemId, orderId },
       data: { status },
-      include: { item: true }
+    });
+
+    const items = order.items.map((i) => (i.id === itemId ? { ...i, status } : i));
+    const allCompleted = items.every((i) => i.status === 'COMPLETED');
+    const anyPreparing = items.some((i) => i.status === 'PREPARING');
+
+    if (allCompleted) {
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+    } else if (anyPreparing && order.status === 'PENDING') {
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: 'PREPARING' },
+      });
+    }
+
+    return this.prisma.orderItem.findUnique({
+      where: { id: itemId },
+      include: { item: true },
     });
   }
 

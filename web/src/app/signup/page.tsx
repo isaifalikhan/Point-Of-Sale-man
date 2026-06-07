@@ -31,6 +31,7 @@ export default function SignupPage() {
     try {
       const response = await apiClient.post('/auth/signup', formData);
       localStorage.setItem('token', response.data.accessToken);
+      localStorage.setItem('userName', response.data.user?.name ?? 'Owner');
       localStorage.setItem('businessType', formData.businessType);
       localStorage.setItem('userRole', response.data.user?.role ?? 'Owner');
       localStorage.setItem(

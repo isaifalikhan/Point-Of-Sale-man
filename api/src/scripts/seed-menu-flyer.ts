@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { PIZZA_TOPPING_ADDONS } from './menu-constants';
+import { imageForCategory } from './menu-images';
 
 const prisma = new PrismaClient();
 
@@ -306,6 +307,7 @@ async function main() {
           name: p.name,
           description: p.description ?? null,
           price: hasVariants ? 0 : p.price,
+          image: imageForCategory(cat.name),
           isAvailable: true,
           categoryId: category.id,
           tenantId,

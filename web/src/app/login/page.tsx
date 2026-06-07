@@ -27,6 +27,7 @@ export default function LoginPage() {
     try {
       const response = await apiClient.post('/auth/login', { email, password });
       localStorage.setItem('token', response.data.accessToken);
+      localStorage.setItem('userName', response.data.user?.name || 'Staff');
       localStorage.setItem('userRole', response.data.user?.role || 'Owner');
       localStorage.setItem(
         'userPermissions',

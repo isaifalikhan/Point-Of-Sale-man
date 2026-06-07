@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Param, Body, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, UseGuards, Request, Query } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import {
   AddOrderItemsDto,
@@ -62,6 +62,16 @@ export class OrdersController {
   @RequirePermissions(Permission.ALL, Permission.POS_ACCESS)
   addItemsToOrder(@Request() req: any, @Param('id') id: string, @Body() dto: AddOrderItemsDto) {
     return this.ordersService.addItemsToOrder(req.tenantId, id, dto);
+  }
+
+  @Delete(':id/items/:orderItemId')
+  @RequirePermissions(Permission.ALL, Permission.POS_ACCESS)
+  removeOrderItem(
+    @Request() req: any,
+    @Param('id') orderId: string,
+    @Param('orderItemId') orderItemId: string,
+  ) {
+    return this.ordersService.removeOrderItem(req.tenantId, orderId, orderItemId);
   }
 
   @Patch(':id/items/:itemId/status')
