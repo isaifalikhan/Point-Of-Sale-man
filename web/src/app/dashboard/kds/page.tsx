@@ -237,7 +237,7 @@ export default function KDSPage() {
                         {item.variantName}
                       </div>
                     )}
-                    {item.addonNames?.length > 0 && (
+                    {item.addonNames && item.addonNames.length > 0 && (
                       <div className="text-[11px] text-emerald-700 font-semibold mt-1">
                         + {item.addonNames.join(', ')}
                       </div>

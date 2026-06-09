@@ -73,7 +73,9 @@ export function lineItemLabel(item: NonNullable<OrderRecord['items']>[number]): 
   const name = item.item?.name || 'Item';
   const parts = [name];
   if (item.variantName) parts.push(`(${item.variantName})`);
-  if (item.addonNames?.length) parts.push(`+ ${item.addonNames.join(', ')}`);
+  if (item.addonNames && item.addonNames.length > 0) {
+    parts.push(`+ ${item.addonNames.join(', ')}`);
+  }
   return parts.join(' ');
 }
 

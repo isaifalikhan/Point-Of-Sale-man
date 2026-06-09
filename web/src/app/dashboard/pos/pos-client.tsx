@@ -380,7 +380,7 @@ export default function POSPage() {
             const inCartSigs = new Set(inCart.map((l) => cartLineSignature(l)));
             const fromOrder = (latest.items || [])
               .map((it: any) => orderItemToCartLine(it, itemsRes.data))
-              .filter((k) => !inCartSigs.has(cartLineSignature(k)));
+              .filter((k: CartLine) => !inCartSigs.has(cartLineSignature(k)));
             return [...inCart, ...fromOrder];
           });
         }
