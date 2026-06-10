@@ -431,15 +431,25 @@ export class OrdersService {
   async checkoutOrder(tenantId: string, orderId: string, dto: CheckoutOrderDto) {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, branch: { tenantId } },
-      include: { payments: true },
+      include: { payments: true, items: true },
     });
 
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.status !== 'COMPLETED') {
+    const allItemsDone =
+      order.items.length > 0 && order.items.every((i) => i.status === 'COMPLETED');
+
+    if (order.status !== 'COMPLETED' && !allItemsDone) {
       throw new BadRequestException('Order must be completed by kitchen before checkout');
+    }
+
+    if (allItemsDone && order.status !== 'COMPLETED') {
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
     }
 
     if (!dto.payments || dto.payments.length === 0) {

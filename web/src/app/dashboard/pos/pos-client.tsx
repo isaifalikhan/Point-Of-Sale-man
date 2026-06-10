@@ -42,6 +42,7 @@ interface MenuItem {
 }
 
 type CartLineStatus = 'in_cart' | 'in_kitchen';
+type KitchenItemStatus = 'PENDING' | 'PREPARING' | 'COMPLETED';
 
 interface CartLine {
   lineId: string;
@@ -53,6 +54,57 @@ interface CartLine {
   status: CartLineStatus;
   /** Set after the line is saved on the open kitchen order */
   orderItemId?: string;
+  /** Kitchen ticket progress — synced from KDS mark dish done */
+  kitchenStatus?: KitchenItemStatus;
+}
+
+function kitchenStatusLabel(status?: KitchenItemStatus) {
+  switch (status) {
+    case 'PREPARING':
+      return 'Cooking';
+    case 'COMPLETED':
+      return 'Done';
+    default:
+      return 'Waiting';
+  }
+}
+
+/** Sync kitchen lines from server — keeps stable lineIds and updates mark-dish-done status */
+function mergeCartWithOrder(
+  prev: CartLine[],
+  orderItems: any[],
+  menuItems: MenuItem[],
+): CartLine[] {
+  const inCart = prev.filter((l) => l.status === 'in_cart');
+  const inCartSigs = new Set(inCart.map((l) => cartLineSignature(l)));
+  const serverLines = orderItems.map((it) => orderItemToCartLine(it, menuItems));
+  const serverByOrderItemId = new Map(serverLines.map((l) => [l.orderItemId!, l]));
+
+  const kitchenFromPrev = prev.filter((l) => l.status === 'in_kitchen' && l.orderItemId);
+  const mergedKitchen: CartLine[] = [];
+  const seenOrderItemIds = new Set<string>();
+
+  for (const line of kitchenFromPrev) {
+    const fresh = serverByOrderItemId.get(line.orderItemId!);
+    if (!fresh) continue;
+    seenOrderItemIds.add(line.orderItemId!);
+    mergedKitchen.push({
+      ...line,
+      quantity: fresh.quantity,
+      totalPrice: fresh.totalPrice,
+      kitchenStatus: fresh.kitchenStatus,
+      variantName: fresh.variantName,
+      addonNames: fresh.addonNames,
+    });
+  }
+
+  const newKitchenLines = serverLines.filter((l) => {
+    if (l.orderItemId && seenOrderItemIds.has(l.orderItemId)) return false;
+    if (inCartSigs.has(cartLineSignature(l))) return false;
+    return true;
+  });
+
+  return [...inCart, ...mergedKitchen, ...newKitchenLines];
 }
 
 function newCartLineId() {
@@ -89,6 +141,7 @@ function orderItemToCartLine(orderItem: any, menuItems: MenuItem[]): CartLine {
     addonNames: orderItem.addonNames || [],
     totalPrice: orderItem.price,
     status: 'in_kitchen',
+    kitchenStatus: (orderItem.status as KitchenItemStatus) || 'PENDING',
   };
 }
 
@@ -98,11 +151,63 @@ interface ActiveKitchenOrder {
   status: string;
   totalAmount: number;
   type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
-  table?: { name?: string } | null;
+  tableId?: string | null;
+  table?: { id?: string; name?: string } | null;
 }
 
 const getOrderPaidAmount = (order: any): number =>
   (order?.payments || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+function filterUnpaidOrders(orders: any[]): any[] {
+  return (orders || []).filter((o: any) => {
+    if (o.status === 'CANCELLED') return false;
+    return getOrderPaidAmount(o) < (o.totalAmount || 0);
+  });
+}
+
+function pickPosOrder(
+  unpaid: any[],
+  opts: { activeId?: string | null; tableId?: string | null },
+): any | null {
+  if (opts.activeId) {
+    const byActive = unpaid.find((o) => o.id === opts.activeId);
+    if (byActive) return byActive;
+  }
+  if (opts.tableId) {
+    const byTable = unpaid.find((o) => (o.tableId || o.table?.id) === opts.tableId);
+    if (byTable) return byTable;
+  }
+  return unpaid[0] ?? null;
+}
+
+function orderToActiveKitchen(order: any): ActiveKitchenOrder {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    totalAmount: order.totalAmount,
+    type: order.type,
+    tableId: order.tableId || order.table?.id || null,
+    table: order.table,
+  };
+}
+
+function orderKitchenProgress(order: { items?: Array<{ status?: string }> }) {
+  const orderItems = order.items || [];
+  const total = orderItems.length;
+  const done = orderItems.filter((i) => i.status === 'COMPLETED').length;
+  return { total, done, allDone: total > 0 && done === total };
+}
+
+function orderLocationLabel(order: {
+  type?: string;
+  table?: { name?: string } | null;
+}): string {
+  if (order.type === 'DINE_IN' && order.table?.name) return order.table.name;
+  if (order.type === 'DELIVERY') return 'Delivery';
+  if (order.type === 'TAKEAWAY') return 'Takeaway';
+  return 'Order';
+}
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -154,6 +259,7 @@ interface CartItemRowProps {
   onSendToKitchen?: (lineId: string) => void;
   onRecallFromKitchen?: (lineId: string) => void;
   sending?: boolean;
+  readOnly?: boolean;
 }
 
 const CartImageFallback = memo(function CartImageFallback() {
@@ -167,14 +273,21 @@ const CartItemRow = memo(function CartItemRow({
   onSendToKitchen,
   onRecallFromKitchen,
   sending,
+  readOnly,
 }: CartItemRowProps) {
-  const { lineId, item, quantity, variantName, totalPrice, status, addonNames } = cartItem;
+  const { lineId, item, quantity, variantName, totalPrice, status, addonNames, kitchenStatus } =
+    cartItem;
   const inKitchen = status === 'in_kitchen';
+  const kitchenDone = inKitchen && kitchenStatus === 'COMPLETED';
 
   return (
     <div
       className={`flex gap-4 p-3 rounded-2xl border transition-colors group ${
-        inKitchen ? 'border-amber-200 bg-amber-50/40' : 'border-slate-50 hover:bg-slate-50/50'
+        kitchenDone
+          ? 'border-emerald-200 bg-emerald-50/50'
+          : inKitchen
+            ? 'border-amber-200 bg-amber-50/40'
+            : 'border-slate-50 hover:bg-slate-50/50'
       }`}
     >
       <div className="h-14 w-14 rounded-xl overflow-hidden shrink-0 shadow-sm border border-slate-100 bg-slate-50 flex items-center justify-center relative">
@@ -202,8 +315,16 @@ const CartItemRow = memo(function CartItemRow({
               </div>
             ))}
             {inKitchen ? (
-              <div className="text-[9px] font-black uppercase tracking-wider text-amber-700 mt-0.5">
-                Sent to kitchen
+              <div
+                className={`text-[9px] font-black uppercase tracking-wider mt-0.5 ${
+                  kitchenDone
+                    ? 'text-emerald-700'
+                    : kitchenStatus === 'PREPARING'
+                      ? 'text-blue-700'
+                      : 'text-amber-700'
+                }`}
+              >
+                {kitchenDone ? 'Kitchen done — ready' : `Kitchen: ${kitchenStatusLabel(kitchenStatus)}`}
               </div>
             ) : (
               <div className="text-[9px] font-black uppercase tracking-wider text-emerald-700 mt-0.5">
@@ -236,7 +357,7 @@ const CartItemRow = memo(function CartItemRow({
                 <span className="hidden sm:inline">Kitchen</span>
               </Button>
             )}
-            {inKitchen && onRecallFromKitchen && (
+            {inKitchen && !kitchenDone && onRecallFromKitchen && (
               <Button
                 type="button"
                 variant="ghost"
@@ -252,9 +373,17 @@ const CartItemRow = memo(function CartItemRow({
                 <span className="hidden sm:inline">Back to basket</span>
               </Button>
             )}
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all rounded-full" onClick={() => onRemove(lineId)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {kitchenDone && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-700 px-2">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Ready</span>
+              </span>
+            )}
+            {!readOnly && (
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all rounded-full" onClick={() => onRemove(lineId)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -304,13 +433,16 @@ export default function POSPage() {
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   /** Portals must mount on the client so #print-receipt is a direct child of document.body for print CSS. */
   const [printPortalReady, setPrintPortalReady] = useState(false);
+  const [openUnpaidOrders, setOpenUnpaidOrders] = useState<any[]>([]);
 
   /** Blocks 5s poll from re-adding kitchen rows while send/recall is in flight */
   const cartSyncPausedRef = useRef(0);
   const activeKitchenOrderRef = useRef<ActiveKitchenOrder | null>(null);
+  const selectedTableIdRef = useRef('');
   const fetchDataRef = useRef<() => Promise<void>>(async () => {});
 
   activeKitchenOrderRef.current = activeKitchenOrder;
+  selectedTableIdRef.current = selectedTableId;
 
   const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
@@ -349,41 +481,36 @@ export default function POSPage() {
       setBranches(branchesRes.data);
       setTables(tablesRes.data);
 
-      // Recover latest unpaid kitchen order so checkout survives refresh/navigation.
-      const unpaidOrders = (ordersRes.data || []).filter((o: any) => {
-        if (o.status === 'CANCELLED') return false;
-        return getOrderPaidAmount(o) < (o.totalAmount || 0);
+      // Recover unpaid kitchen order (by active id or selected table) for manager checkout.
+      const unpaidOrders = filterUnpaidOrders(ordersRes.data);
+      setOpenUnpaidOrders(unpaidOrders);
+      const latest = pickPosOrder(unpaidOrders, {
+        activeId: activeKitchenOrderRef.current?.id,
+        tableId: selectedTableIdRef.current || null,
       });
 
-      if (unpaidOrders.length > 0) {
-        const activeId = activeKitchenOrderRef.current?.id;
-        const latest = activeId
-          ? unpaidOrders.find((o: { id: string }) => o.id === activeId) ?? unpaidOrders[0]
-          : unpaidOrders[0];
+      if (latest) {
+        const next = orderToActiveKitchen(latest);
         setActiveKitchenOrder((prev) => {
-          if (prev && prev.id === latest.id && prev.status === latest.status) return prev;
-          return {
-            id: latest.id,
-            orderNumber: latest.orderNumber,
-            status: latest.status,
-            totalAmount: latest.totalAmount,
-            type: latest.type,
-            table: latest.table,
-          };
+          if (
+            prev &&
+            prev.id === next.id &&
+            prev.status === next.status &&
+            prev.totalAmount === next.totalAmount
+          ) {
+            return prev;
+          }
+          return next;
         });
         if (latest.type === 'DINE_IN' && (latest.tableId || latest.table?.id)) {
           setSelectedTableId(latest.tableId || latest.table.id);
         }
         if (cartSyncPausedRef.current === 0) {
-          setCartLines((prev) => {
-            const inCart = prev.filter((l) => l.status === 'in_cart');
-            const inCartSigs = new Set(inCart.map((l) => cartLineSignature(l)));
-            const fromOrder = (latest.items || [])
-              .map((it: any) => orderItemToCartLine(it, itemsRes.data))
-              .filter((k: CartLine) => !inCartSigs.has(cartLineSignature(k)));
-            return [...inCart, ...fromOrder];
-          });
+          setCartLines((prev) => mergeCartWithOrder(prev, latest.items || [], itemsRes.data));
         }
+      } else if (cartSyncPausedRef.current === 0) {
+        setActiveKitchenOrder(null);
+        setCartLines((prev) => prev.filter((l) => l.status === 'in_cart'));
       }
     } catch (error) {
 
@@ -439,34 +566,20 @@ export default function POSPage() {
         const res = await apiClient.get('/orders');
         const fresh = res.data.find((o: any) => o.id === activeKitchenOrder.id);
         if (fresh) {
-          setActiveKitchenOrder({
-            id: fresh.id,
-            orderNumber: fresh.orderNumber,
-            status: fresh.status,
-            totalAmount: fresh.totalAmount,
-            type: fresh.type,
-            table: fresh.table,
-          });
+          setActiveKitchenOrder(orderToActiveKitchen(fresh));
+          if (cartSyncPausedRef.current === 0 && fresh.items?.length) {
+            setCartLines((prev) => mergeCartWithOrder(prev, fresh.items, items));
+          }
         }
       } catch (error) {
         console.error('Failed to poll kitchen order status:', error);
       }
     };
 
-    const interval = setInterval(poll, 5000);
+    poll();
+    const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
-  }, [activeKitchenOrder?.id]);
-
-  useEffect(() => {
-    if (!activeKitchenOrder) return;
-    if (activeKitchenOrder.status !== 'COMPLETED') return;
-    if (checkoutAutoOpened) return;
-
-    setCheckoutAutoOpened(true);
-    setPaymentMode('FULL');
-    setAmountTendered('');
-    setIsPaymentModalOpen(true);
-  }, [activeKitchenOrder, checkoutAutoOpened]);
+  }, [activeKitchenOrder?.id, items]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -474,6 +587,49 @@ export default function POSPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // When manager picks a table, load that table's open order (kitchen + checkout state).
+  useEffect(() => {
+    if (orderType !== 'DINE_IN' || !selectedTableId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await apiClient.get('/orders');
+        if (cancelled) return;
+
+        const tableOrder = filterUnpaidOrders(res.data).find(
+          (o) => (o.tableId || o.table?.id) === selectedTableId,
+        );
+
+        if (tableOrder) {
+          setActiveKitchenOrder(orderToActiveKitchen(tableOrder));
+          if (cartSyncPausedRef.current === 0) {
+            setCartLines((prev) =>
+              mergeCartWithOrder(prev, tableOrder.items || [], items),
+            );
+          }
+        } else {
+          const current = activeKitchenOrderRef.current;
+          const currentTableId = current?.tableId || current?.table?.id;
+          if (!current || currentTableId !== selectedTableId) {
+            setActiveKitchenOrder(null);
+            setCheckoutAutoOpened(false);
+            if (cartSyncPausedRef.current === 0) {
+              setCartLines((prev) => prev.filter((l) => l.status === 'in_cart'));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load table order:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTableId, orderType, items]);
 
   const addToCart = useCallback((item: MenuItem, variantName?: string, addonNames?: string[]) => {
     let finalPrice = item.price;
@@ -612,6 +768,7 @@ export default function POSPage() {
                 ...l,
                 status: 'in_kitchen' as const,
                 orderItemId: savedItem?.id,
+                kitchenStatus: 'PENDING' as const,
               }
             : l,
         ),
@@ -789,6 +946,62 @@ export default function POSPage() {
     () => cartLines.filter((l) => l.status === 'in_kitchen'),
     [cartLines],
   );
+  const linesKitchenActive = useMemo(
+    () => linesInKitchen.filter((l) => l.kitchenStatus !== 'COMPLETED'),
+    [linesInKitchen],
+  );
+  const linesKitchenDone = useMemo(
+    () => linesInKitchen.filter((l) => l.kitchenStatus === 'COMPLETED'),
+    [linesInKitchen],
+  );
+  const kitchenDoneCount = linesKitchenDone.length;
+  const kitchenTotalCount = linesInKitchen.length;
+  const allKitchenItemsDone =
+    kitchenTotalCount > 0 && kitchenDoneCount === kitchenTotalCount;
+  const readyForCheckout = Boolean(
+    activeKitchenOrder && allKitchenItemsDone && linesInCart.length === 0,
+  );
+
+  const ordersNeedingManager = useMemo(
+    () =>
+      openUnpaidOrders.filter((o) => {
+        const { done, allDone } = orderKitchenProgress(o);
+        return done > 0 || allDone || o.status === 'COMPLETED';
+      }),
+    [openUnpaidOrders],
+  );
+
+  const loadOrderIntoPos = useCallback(
+    (order: any, openCheckout = false) => {
+      setActiveKitchenOrder(orderToActiveKitchen(order));
+      if (order.type === 'DINE_IN' && (order.tableId || order.table?.id)) {
+        setSelectedTableId(order.tableId || order.table.id);
+        setOrderType('DINE_IN');
+      } else if (order.type === 'DELIVERY') {
+        setOrderType('DELIVERY');
+      } else if (order.type === 'TAKEAWAY') {
+        setOrderType('TAKEAWAY');
+      }
+      setCartLines(mergeCartWithOrder([], order.items || [], items));
+      setMobileCartOpen(true);
+      if (openCheckout) {
+        setPaymentMode('FULL');
+        setAmountTendered('');
+        setCheckoutAutoOpened(true);
+        setIsPaymentModalOpen(true);
+      }
+    },
+    [items],
+  );
+
+  useEffect(() => {
+    if (!readyForCheckout) return;
+    if (checkoutAutoOpened) return;
+    setCheckoutAutoOpened(true);
+    setPaymentMode('FULL');
+    setAmountTendered('');
+    setIsPaymentModalOpen(true);
+  }, [readyForCheckout, checkoutAutoOpened]);
 
   const subtotal = useMemo(
     () => cartLines.reduce((sum, p) => sum + p.totalPrice * p.quantity, 0),
@@ -871,14 +1084,14 @@ export default function POSPage() {
           ))}
         </div>
       )}
-      {linesInKitchen.length > 0 && (
+      {linesKitchenActive.length > 0 && (
         <div
           className={`${compact ? 'space-y-2 mt-4' : 'space-y-3 mt-4'} rounded-xl border-2 border-amber-200/80 bg-amber-50/40 p-2`}
         >
           <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 px-1">
-            With kitchen ({linesInKitchen.length})
+            With kitchen ({linesKitchenActive.length})
           </p>
-          {linesInKitchen.map((p) => (
+          {linesKitchenActive.map((p) => (
             <CartItemRow
               key={p.lineId}
               cartItem={p}
@@ -886,6 +1099,24 @@ export default function POSPage() {
               onRemove={removeLine}
               onRecallFromKitchen={recallLineFromKitchen}
               sending={sendingLineId === p.lineId}
+            />
+          ))}
+        </div>
+      )}
+      {linesKitchenDone.length > 0 && (
+        <div
+          className={`${compact ? 'space-y-2 mt-4' : 'space-y-3 mt-4'} rounded-xl border-2 border-emerald-300/80 bg-emerald-50/60 p-2`}
+        >
+          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 px-1">
+            Kitchen done — ready ({linesKitchenDone.length})
+          </p>
+          {linesKitchenDone.map((p) => (
+            <CartItemRow
+              key={p.lineId}
+              cartItem={p}
+              onUpdateQuantity={updateQuantity}
+              onRemove={removeLine}
+              readOnly
             />
           ))}
         </div>
@@ -946,19 +1177,38 @@ export default function POSPage() {
         </div>
 
         {activeKitchenOrder && (
-          <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs">
-            <p className="font-black uppercase tracking-widest text-slate-500">Open order</p>
-            <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800">
-              #{activeKitchenOrder.orderNumber}
-            </p>
-            <p className="mt-1 font-semibold text-slate-800">
-              {activeKitchenOrder.status === 'COMPLETED'
-                ? 'Ready for checkout'
-                : `Kitchen: ${activeKitchenOrder.status}`}
-            </p>
-            <p className="mt-0.5 text-[10px] text-slate-400">
-              Tap Kitchen on each basket line to send separately
-            </p>
+          <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs space-y-2">
+            <div>
+              <p className="font-black uppercase tracking-widest text-slate-500">Open order</p>
+              <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800">
+                #{activeKitchenOrder.orderNumber}
+              </p>
+              <p className="mt-1 font-semibold text-slate-800">
+                {readyForCheckout
+                  ? 'All dishes done — complete order & take payment'
+                  : kitchenTotalCount > 0
+                    ? `Kitchen progress: ${kitchenDoneCount} of ${kitchenTotalCount} dishes ready`
+                    : `Kitchen: ${activeKitchenOrder.status}`}
+              </p>
+            </div>
+            {linesKitchenDone.length > 0 && (
+              <ul className="space-y-1 rounded-lg bg-emerald-50 border border-emerald-100 p-2">
+                {linesKitchenDone.map((line) => (
+                  <li key={line.lineId} className="flex items-center gap-2 text-[11px] font-semibold text-emerald-900">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span className="truncate">
+                      {line.item.name}
+                      {line.variantName ? ` (${line.variantName})` : ''} × {line.quantity}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!readyForCheckout && (
+              <p className="text-[10px] text-slate-400">
+                Mark each dish done on Kitchen screen — checkout unlocks when all are ready
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -966,18 +1216,23 @@ export default function POSPage() {
       {activeKitchenOrder && (
         <div className="p-3 sm:p-4 pt-0 border-t border-slate-100/80 bg-slate-50/95 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button
-            className="h-12 sm:h-14 w-full font-black text-xs sm:text-sm uppercase tracking-widest premium-gradient shadow-lg border-none rounded-xl"
-            disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+            className={`h-12 sm:h-14 w-full font-black text-xs sm:text-sm uppercase tracking-widest shadow-lg border-none rounded-xl ${
+              readyForCheckout
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                : 'premium-gradient opacity-90'
+            }`}
+            disabled={processingOrder || !readyForCheckout}
             onClick={() => {
               setMobileCartOpen(false);
               setPaymentMode('FULL');
               setAmountTendered('');
+              setCheckoutAutoOpened(true);
               setIsPaymentModalOpen(true);
             }}
           >
-            {activeKitchenOrder.status === 'COMPLETED'
-              ? 'Proceed to Checkout'
-              : 'Checkout when kitchen is done'}
+            {readyForCheckout
+              ? 'Complete order & take payment'
+              : `Awaiting kitchen (${kitchenDoneCount}/${kitchenTotalCount || '…'} done)`}
           </Button>
         </div>
       )}
@@ -1026,6 +1281,81 @@ export default function POSPage() {
         {orderType === 'DINE_IN' && (
           <div className="px-2 sm:px-4 py-2 sm:py-3 border-b border-indigo-100 bg-indigo-50/80 shrink-0">
             {renderTableSelect('max-w-xl')}
+          </div>
+        )}
+
+        {ordersNeedingManager.length > 0 && (
+          <div className="px-2 sm:px-4 py-2 sm:py-3 border-b border-emerald-200 bg-emerald-50 shrink-0 space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 flex items-center gap-1.5">
+              <ChefHat className="h-3.5 w-3.5" />
+              Kitchen → POS — manager checkout
+            </p>
+            <div className="flex flex-col gap-2">
+              {ordersNeedingManager.map((order) => {
+                const { total, done, allDone } = orderKitchenProgress(order);
+                const isReady =
+                  allDone || order.status === 'COMPLETED';
+                const isActive = activeKitchenOrder?.id === order.id;
+                const doneItems = (order.items || []).filter(
+                  (i: { status?: string }) => i.status === 'COMPLETED',
+                );
+
+                return (
+                  <div
+                    key={order.id}
+                    className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
+                      isActive
+                        ? 'border-emerald-500 bg-white ring-2 ring-emerald-200'
+                        : 'border-emerald-200 bg-white/80'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black text-slate-900">#{order.orderNumber}</span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {orderLocationLabel(order)}
+                        </span>
+                        {isReady ? (
+                          <span className="text-[10px] font-black uppercase tracking-wide text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                            All dishes ready
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-wide text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                            {done} of {total} dishes done
+                          </span>
+                        )}
+                      </div>
+                      {doneItems.length > 0 && (
+                        <ul className="text-[11px] text-emerald-900 font-medium space-y-0.5">
+                          {doneItems.map((it: any) => (
+                            <li key={it.id} className="flex items-center gap-1.5">
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" />
+                              <span className="truncate">
+                                {it.quantity}× {it.item?.name || 'Item'}
+                                {it.variantName ? ` (${it.variantName})` : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className={`shrink-0 font-black text-xs uppercase tracking-wide ${
+                        isReady
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : ''
+                      }`}
+                      variant={isReady ? 'default' : 'outline'}
+                      onClick={() => loadOrderIntoPos(order, isReady)}
+                    >
+                      {isReady ? 'Complete order & pay' : 'Open in basket'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1098,6 +1428,28 @@ export default function POSPage() {
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto p-3 xl:p-4 space-y-4 custom-scrollbar">
+          {activeKitchenOrder && linesKitchenDone.length > 0 && !readyForCheckout && (
+            <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3 text-xs">
+              <p className="font-black uppercase tracking-widest text-emerald-800 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                {linesKitchenDone.length} dish{linesKitchenDone.length > 1 ? 'es' : ''} marked done
+              </p>
+              <p className="mt-1 text-emerald-900/80 font-medium">
+                Waiting for {kitchenTotalCount - kitchenDoneCount} more from kitchen — then manager can complete order &amp; payment.
+              </p>
+            </div>
+          )}
+          {readyForCheckout && (
+            <div className="rounded-xl border-2 border-emerald-500 bg-emerald-100 p-3 text-xs animate-in fade-in">
+              <p className="font-black uppercase tracking-widest text-emerald-900 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                All dishes ready — complete order below
+              </p>
+              <p className="mt-1 text-emerald-900 font-semibold">
+                Order #{activeKitchenOrder?.orderNumber}: review items and take payment.
+              </p>
+            </div>
+          )}
           {cartLines.length === 0 ? (
             <div className="h-full min-h-[8rem] flex flex-col items-center justify-center text-slate-300 space-y-4 p-6 text-center">
               <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center border-2 border-dashed border-slate-100">
@@ -1130,15 +1482,16 @@ export default function POSPage() {
             <Button
               type="button"
               className="h-11 flex-1 font-black text-xs sm:text-sm uppercase tracking-wide premium-gradient rounded-xl border-none shadow-md"
-              disabled={processingOrder || activeKitchenOrder.status !== 'COMPLETED'}
+              disabled={processingOrder || !readyForCheckout}
               onClick={() => {
                 setMobileCartOpen(false);
                 setPaymentMode('FULL');
                 setAmountTendered('');
+                setCheckoutAutoOpened(true);
                 setIsPaymentModalOpen(true);
               }}
             >
-              {activeKitchenOrder.status === 'COMPLETED' ? 'Checkout' : 'Awaiting kitchen'}
+              {readyForCheckout ? 'Complete order' : `Kitchen ${kitchenDoneCount}/${kitchenTotalCount || '…'} done`}
             </Button>
           )}
         </div>
@@ -1198,9 +1551,39 @@ export default function POSPage() {
       >
         <DialogContent className="sm:max-w-[500px] max-h-[min(92dvh,640px)] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">Payment Processing</DialogTitle>
+            <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">
+              Complete order & payment
+            </DialogTitle>
           </DialogHeader>
           <div className="py-2 sm:py-4 space-y-4 sm:space-y-6">
+            {activeKitchenOrder && linesInKitchen.length > 0 && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">
+                  Order #{activeKitchenOrder.orderNumber} — items for payment
+                </p>
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {linesInKitchen.map((line) => (
+                    <li
+                      key={line.lineId}
+                      className="flex items-start justify-between gap-2 text-sm"
+                    >
+                      <span className="font-semibold text-slate-800 flex items-center gap-1.5 min-w-0">
+                        {line.kitchenStatus === 'COMPLETED' && (
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        )}
+                        <span className="truncate">
+                          {line.quantity}× {line.item.name}
+                          {line.variantName ? ` (${line.variantName})` : ''}
+                        </span>
+                      </span>
+                      <span className="font-bold text-slate-900 shrink-0">
+                        Rs. {(line.totalPrice * line.quantity).toFixed(0)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
              <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
                {['FULL', 'PARTIAL', 'SPLIT'].map(mode => (
                  <Button 
