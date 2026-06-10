@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -90,6 +91,11 @@ export class CheckoutOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderPaymentDto)
   payments!: CreateOrderPaymentDto[];
+
+  /** Pay only for items marked done on kitchen; order stays open for the rest */
+  @IsOptional()
+  @IsBoolean()
+  readyItemsOnly?: boolean;
 }
 
 

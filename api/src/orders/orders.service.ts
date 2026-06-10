@@ -431,11 +431,79 @@ export class OrdersService {
   async checkoutOrder(tenantId: string, orderId: string, dto: CheckoutOrderDto) {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, branch: { tenantId } },
-      include: { payments: true, items: true },
+      include: { payments: true, items: { include: { item: true } } },
     });
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    if (!dto.payments || dto.payments.length === 0) {
+      throw new BadRequestException('At least one payment is required');
+    }
+
+    const incomingPaid = dto.payments.reduce((sum, p) => sum + p.amount, 0);
+
+    if (dto.readyItemsOnly) {
+      const readyItems = order.items.filter((i) => i.status === 'COMPLETED');
+      if (readyItems.length === 0) {
+        throw new BadRequestException('No kitchen-ready items to pay for yet');
+      }
+
+      const readyTotal = readyItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      if (incomingPaid < readyTotal) {
+        throw new BadRequestException(
+          `Insufficient payment for ready dishes. Required: ${readyTotal}, got: ${incomingPaid}`,
+        );
+      }
+
+      await this.prisma.payment.createMany({
+        data: dto.payments.map((p) => ({
+          orderId: order.id,
+          amount: p.amount,
+          method: p.method,
+          status: 'COMPLETED',
+        })),
+      });
+
+      await this.prisma.orderItem.deleteMany({
+        where: { id: { in: readyItems.map((i) => i.id) } },
+      });
+
+      const remaining = order.items.filter((i) => i.status !== 'COMPLETED');
+      const newTotal = remaining.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      const anyPreparing = remaining.some((i) => i.status === 'PREPARING');
+
+      if (remaining.length === 0) {
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'COMPLETED', totalAmount: 0, completedAt: new Date() },
+        });
+        if (order.type === 'DINE_IN' && order.tableId) {
+          await this.prisma.table.update({
+            where: { id: order.tableId },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+      } else {
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+            totalAmount: newTotal,
+            status: anyPreparing ? 'PREPARING' : 'PENDING',
+            completedAt: null,
+          },
+        });
+      }
+
+      return this.prisma.order.findUnique({
+        where: { id: order.id },
+        include: {
+          items: { include: { item: true } },
+          payments: true,
+          table: true,
+        },
+      });
     }
 
     const allItemsDone =
@@ -452,12 +520,7 @@ export class OrdersService {
       });
     }
 
-    if (!dto.payments || dto.payments.length === 0) {
-      throw new BadRequestException('At least one payment is required');
-    }
-
     const alreadyPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
-    const incomingPaid = dto.payments.reduce((sum, p) => sum + p.amount, 0);
     const totalPaid = alreadyPaid + incomingPaid;
 
     if (totalPaid < order.totalAmount) {

@@ -408,6 +408,7 @@ export default function POSPage() {
   const [kitchenTicket, setKitchenTicket] = useState<any>(null);
   const [activeKitchenOrder, setActiveKitchenOrder] = useState<ActiveKitchenOrder | null>(null);
   const [checkoutAutoOpened, setCheckoutAutoOpened] = useState(false);
+  const [checkoutScope, setCheckoutScope] = useState<'full' | 'ready_only'>('full');
 
   const [tables, setTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
@@ -877,27 +878,56 @@ export default function POSPage() {
   const finalizeOrder = async (paymentsArray: {amount: number, method: PaymentMethod}[]) => {
     if (!activeKitchenOrder) return;
 
+    const payingReadyOnly = checkoutScope === 'ready_only';
+    const readyLines = cartLines.filter(
+      (l) => l.status === 'in_kitchen' && l.kitchenStatus === 'COMPLETED',
+    );
+    const readyTotal = readyLines.reduce((sum, l) => sum + l.totalPrice * l.quantity, 0);
+
     setProcessingOrder(true);
     try {
       const paid = await apiClient.patch(`/orders/${activeKitchenOrder.id}/checkout`, {
         payments: paymentsArray,
+        readyItemsOnly: payingReadyOnly,
       });
 
+      const receiptLines = payingReadyOnly
+        ? readyLines
+        : (paid.data.items || []).map((it: any) => ({
+            item: {
+              id: it.item?.id,
+              name: it.item?.name || 'Item',
+              image: it.item?.image,
+            },
+            quantity: it.quantity,
+            variantName: it.variantName,
+            addonNames: it.addonNames || [],
+            totalPrice: it.price,
+          }));
+
+      const receiptTotal = payingReadyOnly
+        ? readyTotal
+        : paid.data.totalAmount;
+
       const orderSnapshot = {
-        cart: (paid.data.items || []).map((it: any) => ({
-          item: {
-            id: it.item?.id,
-            name: it.item?.name || 'Item',
-            image: it.item?.image,
-          },
-          quantity: it.quantity,
-          variantName: it.variantName,
-          addonNames: it.addonNames || [],
-          totalPrice: it.price,
-        })),
-        subtotal: paid.data.totalAmount,
+        cart: receiptLines.map((line: any) =>
+          line.item?.name
+            ? {
+                item: {
+                  id: line.item.id,
+                  name: line.item.name,
+                  image: line.item.image,
+                },
+                quantity: line.quantity,
+                variantName: line.variantName,
+                addonNames: line.addonNames || [],
+                totalPrice: line.totalPrice,
+              }
+            : line,
+        ),
+        subtotal: receiptTotal,
         orderType: paid.data.type,
-        payments: paid.data.payments || paymentsArray,
+        payments: paymentsArray,
         cashier: posUser || 'Staff',
         timestamp: new Date(),
         delivery:
@@ -911,15 +941,25 @@ export default function POSPage() {
       };
 
       setOrderSuccess(orderSnapshot);
-      setActiveKitchenOrder(null);
-      setCartLines([]);
-      setCheckoutAutoOpened(false);
       setIsPaymentModalOpen(false);
       setAmountTendered('');
       setPartialPayments([]);
+      setCheckoutScope('full');
+      setCheckoutAutoOpened(false);
+
+      const orderStillOpen = (paid.data.items || []).length > 0;
+
+      if (orderStillOpen) {
+        syncActiveOrder(paid.data);
+        setCartLines(mergeCartWithOrder([], paid.data.items || [], items));
+      } else {
+        setActiveKitchenOrder(null);
+        setCartLines([]);
+      }
 
       const tablesRes = await apiClient.get('/tables');
       setTables(tablesRes.data);
+      fetchDataRef.current();
     } catch (error: any) {
       console.error('Checkout failed:', error);
       alert(error?.response?.data?.message || 'Checkout failed.');
@@ -958,9 +998,34 @@ export default function POSPage() {
   const kitchenTotalCount = linesInKitchen.length;
   const allKitchenItemsDone =
     kitchenTotalCount > 0 && kitchenDoneCount === kitchenTotalCount;
+  const subtotal = useMemo(
+    () => cartLines.reduce((sum, p) => sum + p.totalPrice * p.quantity, 0),
+    [cartLines],
+  );
+  const payableTotal = activeKitchenOrder?.totalAmount ?? subtotal;
   const readyForCheckout = Boolean(
     activeKitchenOrder && allKitchenItemsDone && linesInCart.length === 0,
   );
+  const readyItemsTotal = useMemo(
+    () => linesKitchenDone.reduce((sum, l) => sum + l.totalPrice * l.quantity, 0),
+    [linesKitchenDone],
+  );
+  const canPayReadyItems = Boolean(
+    activeKitchenOrder && readyItemsTotal > 0 && !readyForCheckout && linesInCart.length === 0,
+  );
+  const modalPayableTotal =
+    checkoutScope === 'ready_only' ? readyItemsTotal : payableTotal;
+  const modalPaymentLines =
+    checkoutScope === 'ready_only' ? linesKitchenDone : linesInKitchen;
+
+  const openCheckoutModal = useCallback((scope: 'full' | 'ready_only') => {
+    setCheckoutScope(scope);
+    setMobileCartOpen(false);
+    setPaymentMode('FULL');
+    setAmountTendered('');
+    setCheckoutAutoOpened(true);
+    setIsPaymentModalOpen(true);
+  }, []);
 
   const ordersNeedingManager = useMemo(
     () =>
@@ -985,29 +1050,18 @@ export default function POSPage() {
       setCartLines(mergeCartWithOrder([], order.items || [], items));
       setMobileCartOpen(true);
       if (openCheckout) {
-        setPaymentMode('FULL');
-        setAmountTendered('');
-        setCheckoutAutoOpened(true);
-        setIsPaymentModalOpen(true);
+        const { allDone } = orderKitchenProgress(order);
+        openCheckoutModal(allDone ? 'full' : 'ready_only');
       }
     },
-    [items],
+    [items, openCheckoutModal],
   );
 
   useEffect(() => {
     if (!readyForCheckout) return;
     if (checkoutAutoOpened) return;
-    setCheckoutAutoOpened(true);
-    setPaymentMode('FULL');
-    setAmountTendered('');
-    setIsPaymentModalOpen(true);
-  }, [readyForCheckout, checkoutAutoOpened]);
-
-  const subtotal = useMemo(
-    () => cartLines.reduce((sum, p) => sum + p.totalPrice * p.quantity, 0),
-    [cartLines],
-  );
-  const payableTotal = activeKitchenOrder?.totalAmount ?? subtotal;
+    openCheckoutModal('full');
+  }, [readyForCheckout, checkoutAutoOpened, openCheckoutModal]);
 
   const availableTables = useMemo(() => {
     const tableNumber = (name: string) => {
@@ -1204,9 +1258,9 @@ export default function POSPage() {
                 ))}
               </ul>
             )}
-            {!readyForCheckout && (
-              <p className="text-[10px] text-slate-400">
-                Mark each dish done on Kitchen screen — checkout unlocks when all are ready
+            {!readyForCheckout && linesKitchenActive.length > 0 && (
+              <p className="text-[10px] text-amber-700 font-bold">
+                {linesKitchenActive.length} dish{linesKitchenActive.length > 1 ? 'es' : ''} still in kitchen — mark done on Kitchen screen, or pay for ready dishes below.
               </p>
             )}
           </div>
@@ -1214,25 +1268,30 @@ export default function POSPage() {
       </div>
 
       {activeKitchenOrder && (
-        <div className="p-3 sm:p-4 pt-0 border-t border-slate-100/80 bg-slate-50/95 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="p-3 sm:p-4 pt-0 border-t border-slate-100/80 bg-slate-50/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
+          {canPayReadyItems && (
+            <Button
+              className="h-12 sm:h-14 w-full font-black text-xs sm:text-sm uppercase tracking-widest shadow-lg border-none rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-400/50"
+              disabled={processingOrder}
+              onClick={() => openCheckoutModal('ready_only')}
+            >
+              Pay for ready dishes — Rs. {readyItemsTotal.toFixed(0)}
+            </Button>
+          )}
           <Button
             className={`h-12 sm:h-14 w-full font-black text-xs sm:text-sm uppercase tracking-widest shadow-lg border-none rounded-xl ${
               readyForCheckout
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                ? 'bg-indigo-600 hover:bg-indigo-700 text-white ring-2 ring-indigo-400/50'
                 : 'premium-gradient opacity-90'
             }`}
             disabled={processingOrder || !readyForCheckout}
-            onClick={() => {
-              setMobileCartOpen(false);
-              setPaymentMode('FULL');
-              setAmountTendered('');
-              setCheckoutAutoOpened(true);
-              setIsPaymentModalOpen(true);
-            }}
+            onClick={() => openCheckoutModal('full')}
           >
             {readyForCheckout
-              ? 'Complete order & take payment'
-              : `Awaiting kitchen (${kitchenDoneCount}/${kitchenTotalCount || '…'} done)`}
+              ? 'Complete order & take payment — Rs. ' + payableTotal.toFixed(0)
+              : canPayReadyItems
+                ? `Full order when all ready (${kitchenDoneCount}/${kitchenTotalCount} done)`
+                : `Awaiting kitchen (${kitchenDoneCount}/${kitchenTotalCount || '…'} done)`}
           </Button>
         </div>
       )}
@@ -1348,7 +1407,7 @@ export default function POSPage() {
                           : ''
                       }`}
                       variant={isReady ? 'default' : 'outline'}
-                      onClick={() => loadOrderIntoPos(order, isReady)}
+                      onClick={() => loadOrderIntoPos(order, true)}
                     >
                       {isReady ? 'Complete order & pay' : 'Open in basket'}
                     </Button>
@@ -1479,20 +1538,25 @@ export default function POSPage() {
             Basket ({linesInCart.length + linesInKitchen.length})
           </Button>
           {activeKitchenOrder && (
-            <Button
-              type="button"
-              className="h-11 flex-1 font-black text-xs sm:text-sm uppercase tracking-wide premium-gradient rounded-xl border-none shadow-md"
-              disabled={processingOrder || !readyForCheckout}
-              onClick={() => {
-                setMobileCartOpen(false);
-                setPaymentMode('FULL');
-                setAmountTendered('');
-                setCheckoutAutoOpened(true);
-                setIsPaymentModalOpen(true);
-              }}
-            >
-              {readyForCheckout ? 'Complete order' : `Kitchen ${kitchenDoneCount}/${kitchenTotalCount || '…'} done`}
-            </Button>
+            canPayReadyItems ? (
+              <Button
+                type="button"
+                className="h-11 flex-1 font-black text-xs sm:text-sm uppercase tracking-wide bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl border-none shadow-md"
+                disabled={processingOrder}
+                onClick={() => openCheckoutModal('ready_only')}
+              >
+                Pay ready — Rs. {readyItemsTotal.toFixed(0)}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-11 flex-1 font-black text-xs sm:text-sm uppercase tracking-wide premium-gradient rounded-xl border-none shadow-md"
+                disabled={processingOrder || !readyForCheckout}
+                onClick={() => openCheckoutModal('full')}
+              >
+                {readyForCheckout ? 'Complete order' : `Kitchen ${kitchenDoneCount}/${kitchenTotalCount || '…'}`}
+              </Button>
+            )
           )}
         </div>
       </div>
@@ -1546,23 +1610,27 @@ export default function POSPage() {
           setIsPaymentModalOpen(open);
           if (!open) {
             setCheckoutAutoOpened(true);
+            setCheckoutScope('full');
           }
         }}
       >
         <DialogContent className="sm:max-w-[500px] max-h-[min(92dvh,640px)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl sm:text-2xl font-black text-slate-900">
-              Complete order & payment
+              {checkoutScope === 'ready_only'
+                ? 'Pay for ready dishes'
+                : 'Complete order & payment'}
             </DialogTitle>
           </DialogHeader>
           <div className="py-2 sm:py-4 space-y-4 sm:space-y-6">
-            {activeKitchenOrder && linesInKitchen.length > 0 && (
+            {activeKitchenOrder && modalPaymentLines.length > 0 && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">
-                  Order #{activeKitchenOrder.orderNumber} — items for payment
+                  Order #{activeKitchenOrder.orderNumber} —{' '}
+                  {checkoutScope === 'ready_only' ? 'paying for ready items' : 'items for payment'}
                 </p>
                 <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {linesInKitchen.map((line) => (
+                  {modalPaymentLines.map((line) => (
                     <li
                       key={line.lineId}
                       className="flex items-start justify-between gap-2 text-sm"
@@ -1585,7 +1653,7 @@ export default function POSPage() {
               </div>
             )}
              <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
-               {['FULL', 'PARTIAL', 'SPLIT'].map(mode => (
+               {(checkoutScope === 'ready_only' ? ['FULL'] : ['FULL', 'PARTIAL', 'SPLIT']).map(mode => (
                  <Button 
                    key={mode}
                    variant={paymentMode === mode ? 'default' : 'ghost'} 
@@ -1599,8 +1667,10 @@ export default function POSPage() {
              </div>
 
              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 flex justify-between items-center">
-                <span className="font-bold text-slate-500 text-sm sm:text-base">Order Total</span>
-                <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {payableTotal.toFixed(0)}</span>
+                <span className="font-bold text-slate-500 text-sm sm:text-base">
+                  {checkoutScope === 'ready_only' ? 'Ready dishes total' : 'Order total'}
+                </span>
+                <span className="text-2xl sm:text-3xl font-black text-slate-900">Rs. {modalPayableTotal.toFixed(0)}</span>
              </div>
 
              {orderType === 'DELIVERY' && (
@@ -1632,25 +1702,25 @@ export default function POSPage() {
                       </option>
                     ))}
                   </select>
-                   {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < payableTotal && (
+                   {amountTendered && parseFloat(amountTendered) > 0 && parseFloat(amountTendered) < modalPayableTotal && (
                      <div className="flex items-center gap-2 text-xs sm:text-sm p-2.5 sm:p-3 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-200">
                         <span className="text-rose-500">⚠</span>
-                        <span>Insufficient! Need Rs. {(payableTotal - parseFloat(amountTendered)).toFixed(0)} more</span>
+                        <span>Insufficient! Need Rs. {(modalPayableTotal - parseFloat(amountTendered)).toFixed(0)} more</span>
                      </div>
                    )}
-                   {parseFloat(amountTendered) >= payableTotal && (
+                   {parseFloat(amountTendered) >= modalPayableTotal && (
                      <div className="flex justify-between items-center text-xs sm:text-sm p-2.5 sm:p-3 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100">
                         <span>Change Due:</span>
-                        <span className="text-lg sm:text-xl">Rs. {(parseFloat(amountTendered) - payableTotal).toFixed(0)}</span>
+                        <span className="text-lg sm:text-xl">Rs. {(parseFloat(amountTendered) - modalPayableTotal).toFixed(0)}</span>
                      </div>
                    )}
                  </div>
                  <Button 
                    className="w-full h-12 sm:h-14 font-bold sm:font-black uppercase tracking-wide sm:tracking-widest bg-indigo-600 hover:bg-indigo-700 text-sm sm:text-base"
-                   disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < payableTotal}
-                  onClick={() => finalizeOrder([{ amount: payableTotal, method: fullPaymentMethod }])}
+                   disabled={processingOrder || !amountTendered || parseFloat(amountTendered) < modalPayableTotal}
+                  onClick={() => finalizeOrder([{ amount: modalPayableTotal, method: fullPaymentMethod }])}
                  >
-                   {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Complete Payment'}
+                   {processingOrder ? <Loader2 className="h-5 w-5 animate-spin" /> : checkoutScope === 'ready_only' ? 'Collect payment' : 'Complete Payment'}
                  </Button>
                </div>
              )}
